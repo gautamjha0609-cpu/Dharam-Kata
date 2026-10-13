@@ -11,9 +11,7 @@ export default {
   transpilePackages: ["@dk/domain", "@dk/print-template", "@dk/schemas"],
   serverExternalPackages: ["exceljs", "sharp"],
   poweredByHeader: false,
-  // the stylesheet is small: inlining it removes a render-blocking request
   experimental: {
-    inlineCss: true,
     // pages visited (or prefetched) in the last 30 s open instantly from the browser's cache instead of asking the server again
     staleTimes: { dynamic: 30, static: 180 },
   },
