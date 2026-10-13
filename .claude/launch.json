@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "web", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@dk/web", "dev"], "port": 3000 },
+    { "name": "web-prod", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@dk/web", "start"], "port": 3000 }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "name": "@dk/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc -p .",
+    "test": "echo no-tests",
+    "lint": "echo ok"
+  },
+  "dependencies": {
+    "@dk/domain": "workspace:*",
+    "@dk/print-template": "workspace:*",
+    "@dk/schemas": "workspace:*",
+    "@supabase/ssr": "0.5.2",
+    "@supabase/supabase-js": "2.46.1",
+    "exceljs": "4.4.0",
+    "next": "15.0.3",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "sharp": "0.33.5",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "22.9.0",
+    "@types/react": "19.0.0",
+    "@types/react-dom": "19.0.0",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.4.49",
+    "tailwindcss": "3.4.15",
+    "typescript": "5.6.3"
+  },
+  "browserslist": [
+    "chrome >= 100",
+    "edge >= 100",
+    "firefox >= 100",
+    "safari >= 15.4",
+    "ios_saf >= 15.4",
+    "and_chr >= 100"
+  ]
+}

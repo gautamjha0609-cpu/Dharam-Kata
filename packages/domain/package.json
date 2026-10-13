@@ -1,0 +1,3 @@
+{ "name": "@dk/domain", "version": "0.1.0", "private": true, "type": "module", "main": "src/index.ts",
+  "scripts": { "typecheck": "tsc -p .", "test": "vitest run", "lint": "echo ok" },
+  "dependencies": { "decimal.js": "10.4.3" } }

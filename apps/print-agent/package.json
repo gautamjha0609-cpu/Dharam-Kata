@@ -1,0 +1,71 @@
+{
+  "name": "dharam-kata-print-agent",
+  "productName": "Dharam Kata Print Agent",
+  "version": "0.1.0",
+  "description": "Silent invoice printing agent for Dharam Kata (Windows)",
+  "private": true,
+  "main": "dist/main.js",
+  "author": "The Valuation House",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "pnpm build && electron .",
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "lint": "echo ok",
+    "dist": "pnpm build && electron-builder --win nsis --x64 --ia32 --arm64 --publish never",
+    "dist:x64": "pnpm build && electron-builder --win nsis --x64 --publish never"
+  },
+  "devDependencies": {
+    "@dk/print-template": "workspace:*",
+    "@types/node": "22.9.0",
+    "electron": "33.2.0",
+    "electron-builder": "25.1.8",
+    "esbuild": "0.24.0",
+    "exceljs": "4.4.0",
+    "rcedit": "4.0.1"
+  },
+  "build": {
+    "appId": "in.thevaluationhouse.dharamkata.printagent",
+    "productName": "Dharam Kata Print Agent",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "ui/**",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
+      "legalTrademarks": "The Valuation House"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "shortcutName": "Dharam Kata Print Agent",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Dharam-Kata-Print-Agent-Setup-${version}-${arch}.${ext}",
+      "include": "build/installer.nsh"
+    },
+    "afterPack": "after-pack.cjs"
+  }
+}

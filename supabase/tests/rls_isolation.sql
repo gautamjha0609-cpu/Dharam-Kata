@@ -1,0 +1,51 @@
+-- RLS isolation smoke test. Run in the SQL editor / MCP execute_sql.
+-- Passes when the ONLY error is: RLS_TESTS_OK (final deliberate rollback keeps the DB clean).
+do $$
+declare ua uuid := gen_random_uuid(); ub uuid := gen_random_uuid(); ra uuid := gen_random_uuid();
+  oa uuid := gen_random_uuid(); ob uuid := gen_random_uuid(); sa uuid := gen_random_uuid(); sb uuid := gen_random_uuid();
+  n int; r jsonb;
+begin
+  insert into auth.users (id, email, aud, role) values (ua,'a@t.test','authenticated','authenticated'),(ub,'b@t.test','authenticated','authenticated'),(ra,'ra@t.test','authenticated','authenticated');
+  insert into public.profiles (user_id, login_id) values (ua,'opa'),(ub,'opb'),(ra,'owna');
+  insert into public.organizations (id, legal_name, display_name, slug) values (oa,'A','A','org-a'),(ob,'B','B','org-b');
+  insert into public.sites (id, organization_id, name, code) values (sa,oa,'S','S1'),(sb,ob,'S','S1');
+  insert into public.organization_memberships (organization_id,user_id,role) values (oa,ua,'operator'),(ob,ub,'operator'),(oa,ra,'owner');
+  perform set_config('request.jwt.claims', json_build_object('sub',ua,'role','authenticated')::text, true);
+  set local role authenticated;
+  select count(*) into n from public.organizations; assert n=1, 'op A sees only own org, saw '||n;
+  select count(*) into n from public.sites; assert n=0, 'unassigned operator sees no sites, saw '||n;
+  select count(*) into n from public.organization_memberships; assert n=1, 'op sees only self membership, saw '||n;
+  select count(*) into n from public.profiles; assert n=1, 'op sees only self profile, saw '||n;
+  assert not public.has_permission(ob,'weighment.create'), 'no cross-tenant permission';
+  assert public.has_permission(oa,'weighment.create'), 'own permission ok';
+  assert not public.has_permission(oa,'invoice.cancel'), 'deny by default';
+  begin insert into public.organizations (legal_name,display_name,slug) values ('x','x','hack-org'); assert false,'insert must fail';
+  exception when insufficient_privilege then null; end;
+  begin update public.profiles set active=false; assert false,'update must fail';
+  exception when insufficient_privilege then null; end;
+  r := public.me(); assert jsonb_array_length(r->'memberships')=1, 'me() one membership';
+  r := public.app_bootstrap(); assert jsonb_array_length(r->'memberships')=1, 'bootstrap one membership';
+  assert jsonb_typeof(r->'sites')='array', 'bootstrap sites array';
+  reset role;
+  insert into public.site_memberships (organization_id,site_id,user_id) values (oa,sa,ua);
+  perform set_config('request.jwt.claims', json_build_object('sub',ua,'role','authenticated')::text, true);
+  set local role authenticated;
+  select count(*) into n from public.sites; assert n=1, 'assigned operator sees own site, saw '||n;
+  reset role; perform set_config('request.jwt.claims', json_build_object('sub',ra,'role','authenticated')::text, true);
+  set local role authenticated;
+  select count(*) into n from public.organization_memberships; assert n=2, 'owner sees org A members, saw '||n;
+  select count(*) into n from public.profiles; assert n=2, 'owner sees self + org A user profiles, saw '||n;
+  select count(*) into n from public.sites where organization_id=ob; assert n=0, 'owner cannot see org B sites';
+  r := public.dashboard_summary(ob, now()); assert (r->>'pending')::int = 0 and jsonb_array_length(r->'recent')=0, 'dashboard_summary shows nothing for another firm';
+  reset role; set local role anon;
+  begin perform count(*) from public.organizations; assert false,'anon must be denied';
+  exception when insufficient_privilege then null; end;
+  begin perform public.app_bootstrap(); assert false,'anon bootstrap must be denied';
+  exception when insufficient_privilege then null; end;
+  reset role; update public.organization_memberships set status='disabled' where user_id=ua;
+  perform set_config('request.jwt.claims', json_build_object('sub',ua,'role','authenticated')::text, true);
+  set local role authenticated;
+  assert not public.has_permission(oa,'weighment.create'), 'disabled member denied';
+  reset role;
+  raise exception 'RLS_TESTS_OK';
+end $$;

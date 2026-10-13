@@ -1,0 +1,24 @@
+{
+  "name": "@dk/print-template",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "lint": "echo ok"
+  },
+  "dependencies": {
+    "exceljs": "4.4.0",
+    "jszip": "3.10.1",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "22.9.0"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./xlsx": "./src/xlsx-import.ts"
+  }
+}

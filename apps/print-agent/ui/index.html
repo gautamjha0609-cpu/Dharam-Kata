@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src file: data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Dharam Kata Print Agent</title>
+<style>
+  *{box-sizing:border-box} body{margin:0;font:14px system-ui,Segoe UI,sans-serif;background:#f4f7fa;color:#12263a}
+  header{background:#0B2D4C;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px} header img{width:44px;height:44px;border-radius:10px;flex:none} header h1{margin:0;font-size:17px} header p{margin:2px 0 0;font-size:12px;opacity:.8}
+  button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #19B957;outline-offset:2px} button:disabled{opacity:.6;cursor:default}
+  @media (prefers-reduced-motion:no-preference){main>*{animation:in .18s ease-out} @keyframes in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}}
+  main{padding:16px;display:grid;gap:14px} .card{background:#fff;border:1px solid #dbe3ea;border-radius:10px;padding:14px}
+  label{display:block;font-weight:600;margin:8px 0 4px} input,select{width:100%;min-height:38px;padding:0 10px;border:1px solid #b9c5d1;border-radius:8px;font-size:14px}
+  button{min-height:38px;padding:0 14px;border:0;border-radius:8px;background:#19B957;color:#fff;font-weight:600;cursor:pointer;margin-top:10px}
+  button.ghost{background:#fff;color:#0B2D4C;border:1px solid #b9c5d1} button.danger{background:#fff;color:#b42318;border:1px solid #f1b0aa}
+  .badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:700} .ok{background:#dcf5e5;color:#116b34} .bad{background:#fde4e1;color:#9c2118}
+  .err{color:#9c2118;margin-top:8px} .hint{color:#51657a;font-size:12px;margin-top:6px} ul{margin:6px 0 0;padding-left:18px} pre{margin:0;max-height:150px;overflow:auto;font-size:12px;background:#f4f7fa;padding:8px;border-radius:6px}
+</style>
+</head>
+<body>
+<header><img src="logo.png" alt="" width="44" height="44"><div><h1>Dharam Kata Print Agent</h1><p id="ver"></p></div></header>
+<main id="app"></main>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let chosen = '';
+let last = '';
+async function render(force) {
+  const s = await window.agent.state();
+  const snap = JSON.stringify(s);
+  const typing = document.activeElement && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) && $('#app').contains(document.activeElement);
+  if (!force && (snap === last || typing)) return;
+  last = snap;
+  $('#ver').textContent = 'Version ' + s.version + ' · ' + s.host;
+  if (!s.paired) {
+    $('#app').innerHTML = `<div class="card"><b>Pair this PC</b>
+      <p class="hint">In the website go to Settings → Printing → Generate pairing code, then enter it here. The code works once and expires in 10 minutes.</p>
+      <label for="code">Pairing code</label><input id="code" autocomplete="off" autocapitalize="characters" placeholder="e.g. 9F3A12BC">
+      <label for="label">Name of this PC</label><input id="label" value="${esc(s.host)}">
+      <button id="pairBtn">Pair</button><div id="perr" class="err"></div>
+      <p class="hint">Server: ${esc(s.server)}</p></div>`;
+    $('#pairBtn').onclick = async () => {
+      $('#pairBtn').disabled = true; $('#perr').textContent = '';
+      const r = await window.agent.pair($('#code').value, $('#label').value);
+      if (!r.ok) { $('#perr').textContent = r.error; $('#pairBtn').disabled = false; } else render(true);
+    };
+    return;
+  }
+  if (!chosen && s.printers.length) chosen = s.printers[0];
+  $('#app').innerHTML = `
+    <div class="card"><b>${esc(s.label)}</b> <span class="badge ${s.connected ? 'ok' : 'bad'}">${s.connected ? '● Connected' : '○ Not connected'}</span>
+      ${s.lastError ? `<div class="err">${esc(s.lastError)}</div>` : ''}
+      <p class="hint">Jobs sent to Windows since start: ${s.jobsPrinted}${s.lastJob ? ' · last: ' + esc(s.lastJob) : ''}</p>
+      <p class="hint">This agent runs in the background and starts with Windows. Closing this window keeps it running (see the tray icon).</p></div>
+    <div class="card"><b>Printers on this PC</b>
+      <p class="hint">An administrator chooses which printer receives invoices in the website (Settings → Printing). Use the buttons below to check alignment.</p>
+      ${s.printers.length ? `<label for="pr">Printer</label><select id="pr">${s.printers.map(p => `<option ${p===chosen?'selected':''}>${esc(p)}</option>`).join('')}</select>
+      <button class="ghost" id="cal">Print calibration sheet</button> <button class="ghost" id="smp">Print sample (TEST)</button><div id="tmsg" class="hint"></div>` : `<p class="err">No printer found on this PC.</p><p class="hint">Install the printer's driver in Windows (Settings → Bluetooth &amp; devices → Printers &amp; scanners). It then appears here by itself.</p>`}
+      <p class="hint">“Sent to Windows print queue” means Windows accepted the job. It does not prove paper came out.</p></div>
+    <div class="card"><b>Daily backup (this PC)</b>
+      <p class="hint">After every print, today's invoices are saved into one Excel file named with the date, inside <b>FY → month</b> folders. It works even without internet.</p>
+      <p class="hint">Folder: <b>${esc(s.backup.root)}</b><br>Days backed up: <b>${s.backup.days}</b>${s.backup.latest ? '<br>Latest file: ' + esc(s.backup.latest) : ''}</p>
+      <button class="ghost" id="bopen">Open backup folder</button> <button class="ghost" id="bchoose">Change folder</button>
+      <p class="hint">If a day's Excel file is open in Excel it is refreshed on the next print; no data is lost. Copy this folder to a pen drive or cloud drive for an extra safe copy.</p></div>
+    <div class="card"><b>Activity</b><pre>${esc(s.log.join('\n') || 'Nothing yet')}</pre></div>
+    <div class="card"><button class="ghost" id="logopen">Show the log file</button> <button class="danger" id="unpair">Unpair this PC</button><p class="hint">The log file helps support find a problem. It never contains passwords.</p></div>`;
+  $('#pr')?.addEventListener('change', e => chosen = e.target.value);
+  const t = (kind) => async () => { $('#tmsg').textContent = 'Sending…'; const r = await window.agent.testPrint($('#pr').value, kind); $('#tmsg').textContent = r.ok ? 'Sent to Windows print queue.' : 'Failed: ' + r.error; };
+  $('#bopen').onclick = () => window.agent.backupOpen();
+  $('#logopen').onclick = () => window.agent.logOpen();
+  $('#bchoose').onclick = async () => { const r = await window.agent.backupChoose(); if (r.ok) render(true); };
+  if ($('#cal')) { $('#cal').onclick = t('calibration'); $('#smp').onclick = t('sample'); }
+  $('#unpair').onclick = async () => { if (confirm('Unpair this PC? It will stop printing invoices until paired again.')) { await window.agent.unpair(); render(true); } };
+}
+window.agent.onState(() => render(false));
+render(true);
+</script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+html, body { background: #f4f7fa; color: #12263a; -webkit-text-size-adjust: 100%; }
+/* 16px minimum on inputs prevents iOS Safari focus-zoom */
+input, select, textarea { font-size: 16px; }
+:focus-visible { outline: 2px solid #19B957; outline-offset: 2px; }
+
+/* iOS-style layers (dropdowns, calendar) */
+@keyframes ios-pop { from { opacity: 0; transform: scale(0.96) translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes ios-sheet { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes ios-fade { from { opacity: 0; } to { opacity: 1; } }
+.ios-pop { animation: ios-pop 0.14s ease-out; transform-origin: top; }
+.ios-sheet { animation: ios-sheet 0.28s cubic-bezier(0.32, 0.72, 0, 1); }
+@keyframes ios-drawer { from { transform: translateX(-100%); } to { transform: none; } }
+.ios-drawer { animation: ios-drawer 0.22s cubic-bezier(0.32, 0.72, 0, 1); }
+@keyframes ios-toast { from { opacity: 0; transform: translate(-50%, -14px) scale(0.97); } to { opacity: 1; transform: translate(-50%, 0); } }
+.ios-toast { animation: ios-toast 0.22s cubic-bezier(0.32, 0.72, 0, 1); }
+.ios-fade { animation: ios-fade 0.2s ease-out; }
+@media (prefers-reduced-motion: reduce) { .ios-pop, .ios-sheet, .ios-fade, .ios-drawer, .ios-toast { animation: none; } }
+
+@layer components {
+  .btn { @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed; }
+  .btn-primary { @apply btn bg-brand-dark text-white hover:bg-brand-darker; }
+  .btn-navy { @apply btn bg-navy text-white hover:bg-navy-700; }
+  .btn-ghost { @apply btn border border-slate-300 bg-white text-navy hover:bg-slate-50; }
+  .btn-danger { @apply btn border border-red-300 bg-white text-red-700 hover:bg-red-50; }
+  .field { @apply min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 text-navy placeholder:text-slate-400; }
+  .label { @apply mb-1 block text-sm font-medium text-slate-700; }
+  .card { @apply rounded-xl border border-slate-200 bg-white p-4 shadow-sm; }
+  .skeleton { @apply animate-pulse rounded bg-slate-200; }
+  .badge { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold; }
+}
+
+/* The Valuation House wordmark: letters appear one after another once, then stay. Only opacity / transform => smooth, no layout work. */
+.vh-wordmark { font-family: "Palatino Linotype", Palatino, "Book Antiqua", "Iowan Old Style", Georgia, serif; font-weight: 500; letter-spacing: 0.01em; line-height: 1.1; }
+.vh-letter { display: inline-block; opacity: 0; transform: translateY(0.35em); animation: vh-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards; will-change: opacity, transform; }
+@keyframes vh-in { to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .vh-letter { opacity: 1; transform: none; animation: none; } }
+
+/* Sidebar menu: no chunky grey scrollbar. A thin, soft bar appears only while you point at the menu. */
+.nav-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; overscroll-behavior: contain; }
+.nav-scroll:hover { scrollbar-color: rgba(255, 255, 255, 0.28) transparent; }
+.nav-scroll::-webkit-scrollbar { width: 6px; }
+.nav-scroll::-webkit-scrollbar-track { background: transparent; }
+.nav-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
+.nav-scroll:hover::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.28); }

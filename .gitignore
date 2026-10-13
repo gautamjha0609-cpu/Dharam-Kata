@@ -1,0 +1,9 @@
+node_modules
+.next
+dist
+release
+.env
+.env.*
+!.env.example
+*.log
+Documnet
