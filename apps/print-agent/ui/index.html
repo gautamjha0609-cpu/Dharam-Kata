@@ -6,7 +6,7 @@
 <title>Dharam Kata Print Agent</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px system-ui,Segoe UI,sans-serif;background:#f4f7fa;color:#12263a}
-  header{background:#0B2D4C;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px} header img{width:44px;height:44px;border-radius:10px;flex:none} header h1{margin:0;font-size:17px} header p{margin:2px 0 0;font-size:12px;opacity:.8}
+  header{background:#0B2D4C;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px} header img{width:44px;height:44px;border-radius:10px;flex:none} header a{color:#fff;font-size:12px;text-decoration:underline;opacity:.9;white-space:nowrap} header a:hover{opacity:1} header h1{margin:0;font-size:17px} header p{margin:2px 0 0;font-size:12px;opacity:.8}
   button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #19B957;outline-offset:2px} button:disabled{opacity:.6;cursor:default}
   @media (prefers-reduced-motion:no-preference){main>*{animation:in .18s ease-out} @keyframes in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}}
   main{padding:16px;display:grid;gap:14px} .card{background:#fff;border:1px solid #dbe3ea;border-radius:10px;padding:14px}
@@ -18,7 +18,7 @@
 </style>
 </head>
 <body>
-<header><img src="logo.png" alt="" width="44" height="44"><div><h1>Dharam Kata Print Agent</h1><p id="ver"></p></div></header>
+<header><img src="logo.png" alt="" width="44" height="44"><div style="flex:1"><h1>Dharam Kata Print Agent</h1><p id="ver"></p></div><a href="#" id="site" title="Open the website in your browser">dharam-kata.vercel.app ↗</a></header>
 <main id="app"></main>
 <script>
 const $ = (s) => document.querySelector(s);
@@ -72,6 +72,7 @@ async function render(force) {
   if ($('#cal')) { $('#cal').onclick = t('calibration'); $('#smp').onclick = t('sample'); }
   $('#unpair').onclick = async () => { if (confirm('Unpair this PC? It will stop printing invoices until paired again.')) { await window.agent.unpair(); render(true); } };
 }
+$('#site').onclick = (e) => { e.preventDefault(); window.agent.websiteOpen(); };
 window.agent.onState(() => render(false));
 render(true);
 </script>

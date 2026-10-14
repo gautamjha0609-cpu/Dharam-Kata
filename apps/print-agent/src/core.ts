@@ -23,7 +23,7 @@ export interface PrinterPort {
   /** Optional pre-flight: a safe-failure code if Windows reports the printer offline / out of paper / jammed, else null. */
   check?(name: string): Promise<string | null>;
   /** Resolves when the OS print subsystem accepted (or rejected) the job. Never proves paper came out. */
-  print(html: string, opts: { deviceName: string; widthMm: number; heightMm: number; copies: number }): Promise<{ ok: boolean; error?: string }>;
+  print(html: string, opts: { deviceName: string; widthMm: number; heightMm: number; copies: number; /** file name (without extension) when the printer is a PDF printer */ fileName?: string }): Promise<{ ok: boolean; error?: string; /** what happened, for the activity log (e.g. the PDF file that was written) */ note?: string }>;
 }
 /** Durable record of jobs whose final status still has to reach the server (survives restarts). */
 export interface Journal {
@@ -66,6 +66,14 @@ export class AgentCore {
   ) {}
 
   private lastFailCode = "";
+
+  /** PDF file name: invoice no._vehicle no_date (an opening slip gets _opening so it never overwrites the closing slip). */
+  private pdfName(v: Record<string, string | undefined>): string {
+    const d = this.now();
+    const date = `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+    const part = (s?: string) => (s ?? "").replace(/[^A-Za-z0-9.-]+/g, "_").replace(/^_+|_+$/g, "");
+    return [part(v.serial) || "invoice", part(v.vehicle) || "vehicle", date].join("_") + (v.stage === "open" ? "_opening" : "");
+  }
 
   /** Retry delivering final statuses that failed to reach the server (e.g. network drop after printing). */
   async flushAcks(): Promise<void> {
@@ -162,8 +170,9 @@ export class AgentCore {
 
     // 4. hand to the OS. If we crash after this line the server turns the job UNKNOWN (never auto-retried).
     await this.report(job, "submitting");
-    const res = await this.printer.print(html, { deviceName: job.printer.os_name, widthMm: layout.paper.w, heightMm: layout.paper.h, copies: layout.copies });
+    const res = await this.printer.print(html, { deviceName: job.printer.os_name, widthMm: layout.paper.w, heightMm: layout.paper.h, copies: layout.copies, fileName: this.pdfName(values) });
     if (!res.ok) return this.fail(job, mapPrintError(res.error));
+    if (res.note) this.log(res.note);
     this.journal.markSubmitted(job.id);
     await this.report(job, "submitted_to_spooler");
     return "printed";

@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { DebtorDialog } from "@/components/debtor-dialog";
 import { clearCache, isFresh, peek, put } from "@/lib/swr-cache";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-context";
@@ -18,7 +19,7 @@ export function useParties() {
     if (cached && tick === 0 && isFresh(key, 15_000)) return;
     void supabase()
       .from("parties")
-      .select("id,display_name,party_type,gstin,phone,city,active")
+      .select("id,display_name,party_type,gstin,pan,phone,address,active")
       .eq("organization_id", org.organization_id)
       .eq("active", true)
       .order("display_name")
@@ -28,11 +29,15 @@ export function useParties() {
   return { parties, reload: () => { clearCache("parties:"); setTick((t) => t + 1); } };
 }
 
+type Hit = Pick<Party, "id" | "display_name" | "gstin" | "phone">;
+const COLS = "id,display_name,gstin,phone";
+
 /**
- * Type-ahead + dropdown. Selecting a known party stores its stable id. A free-typed name is never silently
- * attached to a similar one: it is only created after an explicit click, and only with party.manage.
+ * Debtor type-ahead. Only THIS firm's debtors are ever searched (organization_id in every query, plus the database's row security).
+ * It never loads the whole list: it asks for the 8 best matches while the person types (one small request, 250 ms after they stop).
+ * A typed name that is not in the list turns the box red and offers to create the debtor first: a free-typed name is never attached silently.
  */
-export function PartyPicker({ value, onChange, onName, required, label = "Party / Debtor" }: {
+export function PartyPicker({ value, onChange, onName, required, label = "Debtor" }: {
   value: string | null;
   onChange: (id: string | null) => void;
   /** live text/name of what is typed or selected, so a receipt preview can reflect it immediately */
@@ -41,50 +46,81 @@ export function PartyPicker({ value, onChange, onName, required, label = "Party 
   label?: string;
 }) {
   const { org, can } = useApp();
-  const { parties, reload } = useParties();
-  const listId = useId();
-  const selected = parties.find((p) => p.id === value);
+  const id = useId();
   const [text, setText] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [hits, setHits] = useState<Hit[]>([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [picked, setPicked] = useState<Hit | null>(null);
+  const [creating, setCreating] = useState(false);
+  const seq = useRef(0);
+  const canCreate = can("party.create") || can("party.manage");
 
-  useEffect(() => { if (selected) { setText(selected.display_name); onName?.(selected.display_name); } }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps
+  // an id handed in by the screen (closing an entry that already has a debtor): show its name
+  useEffect(() => {
+    if (!value || !org) { if (!value) setPicked(null); return; }
+    if (picked?.id === value) return;
+    let live = true;
+    void supabase().from("parties").select(COLS).eq("organization_id", org.organization_id).eq("id", value).maybeSingle()
+      .then(({ data }: { data: unknown }) => { if (live && data) { const h = data as Hit; setPicked(h); setText(h.display_name); onName?.(h.display_name); } });
+    return () => { live = false; };
+  }, [value, org]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function onInput(v: string) {
-    setText(v);
-    onName?.(v.trim());
-    setErr(null);
-    const hit = parties.find((p) => p.display_name.toLowerCase() === v.trim().toLowerCase());
-    onChange(hit ? hit.id : null);
-  }
-
-  async function createNew() {
+  const search = useCallback((q: string) => {
     if (!org) return;
-    setBusy(true);
-    const { data, error } = await supabase().rpc("upsert_party", { p_org: org.organization_id, p_id: null as unknown as string, p_name: text.trim() });
-    setBusy(false);
-    if (error) return setErr(friendlyError(error));
-    reload();
-    onChange((data as { id: string }).id);
+    const mine = ++seq.current;
+    setLoading(true);
+    let qb = supabase().from("parties").select(COLS).eq("organization_id", org.organization_id).eq("active", true).order("normalized_name").limit(8);
+    const s = q.trim().toUpperCase().replace(/[%_,()]/g, " ");
+    if (s) qb = qb.ilike("normalized_name", `%${s.replace(/\s+/g, "%")}%`);
+    void qb.then(({ data }: { data: unknown }) => { if (mine === seq.current) { setHits((data ?? []) as Hit[]); setLoading(false); } });
+  }, [org]);
+
+  // typing: wait until the person pauses
+  useEffect(() => {
+    if (!open || picked) return;
+    const t = setTimeout(() => search(text), text.trim() ? 250 : 0);
+    return () => clearTimeout(t);
+  }, [text, open, picked, search]);
+
+  function choose(h: Hit) { setPicked(h); setText(h.display_name); setOpen(false); onChange(h.id); onName?.(h.display_name); }
+  function onInput(v: string) {
+    setText(v); setOpen(true); setPicked(null); onChange(null); onName?.(v.trim());
+    // exactly one of the suggestions was typed out in full: take it
+    const exact = hits.find((h) => h.display_name.toLowerCase() === v.trim().toLowerCase());
+    if (exact) choose(exact);
   }
 
-  const isNew = text.trim() !== "" && !selected && !parties.some((p) => p.display_name.toLowerCase() === text.trim().toLowerCase());
+  const typed = text.trim();
+  const unknown = typed !== "" && !picked && !loading && !hits.some((h) => h.display_name.toLowerCase() === typed.toLowerCase());
   return (
-    <div>
-      <label className="label" htmlFor={listId + "-in"}>{label}{required && <span className="text-red-600"> *</span>}</label>
-      <input id={listId + "-in"} className="field" list={listId} value={text} onChange={(e) => onInput(e.target.value)} placeholder="Type to search or choose…" autoComplete="off" required={required} />
-      <datalist id={listId}>{parties.map((p) => <option key={p.id} value={p.display_name} />)}</datalist>
-      {isNew && (
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-amber-800">“{text.trim()}” is not in the party list.</span>
-          {can("party.manage") ? (
-            <button type="button" className="btn-ghost !min-h-[36px]" disabled={busy} onClick={createNew}>{busy ? "Adding…" : "Add as new party"}</button>
-          ) : (
-            <span className="text-slate-600">Ask an admin to add it.</span>
-          )}
+    <div className="relative">
+      <label className="label" htmlFor={id + "-in"}>{label}{required && <span className="text-red-600"> *</span>}</label>
+      <input id={id + "-in"} role="combobox" aria-expanded={open} aria-controls={id + "-list"} aria-invalid={unknown} autoComplete="off"
+        className={`field ${unknown ? "!border-red-500 !bg-red-50" : picked ? "!border-brand" : ""}`}
+        value={text} placeholder="Type to search this firm's debtors…" onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)} onChange={(e) => onInput(e.target.value)} />
+      {open && !picked && hits.length > 0 && (
+        <ul id={id + "-list"} role="listbox" className="absolute left-0 right-0 z-30 mt-1 max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+          {hits.map((h) => (
+            <li key={h.id} role="option" aria-selected={false}>
+              <button type="button" className="flex min-h-[44px] w-full flex-col items-start justify-center px-3 py-1 text-left hover:bg-slate-50" onMouseDown={(e) => e.preventDefault()} onClick={() => choose(h)}>
+                <span className="font-medium text-navy">{h.display_name}</span>
+                {(h.gstin || h.phone) && <span className="text-xs text-slate-500">{[h.gstin, h.phone].filter(Boolean).join(" · ")}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {unknown && (
+        <div role="alert" className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+          <span className="font-medium text-red-700">“{typed}” is not one of your debtors.</span>
+          {canCreate
+            ? <button type="button" className="btn-primary !min-h-[36px] !px-3" onClick={() => setCreating(true)}>Create new debtor</button>
+            : <span className="text-slate-600">Ask your administrator to add this debtor.</span>}
         </div>
       )}
-      {err && <p className="mt-1 text-sm text-red-700">{err}</p>}
+      <DebtorDialog open={creating} presetName={typed} onClose={() => setCreating(false)}
+        onSaved={(p) => { setCreating(false); choose({ id: p.id, display_name: p.display_name, gstin: p.gstin ?? null, phone: p.phone ?? null }); }} />
     </div>
   );
 }

@@ -98,3 +98,4 @@ export function formatInvoiceNumber(n: number, { prefix = "", padding = 0 }: Num
 export function normalizeVehicle(reg: string): string {
   return reg.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
+export * from "./india";

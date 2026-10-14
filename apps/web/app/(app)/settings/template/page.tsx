@@ -25,7 +25,7 @@ const SAMPLE: PrintValues = {
   payment_mode: "cash", notes: "Sample note", operator: "Operator", site: "Main", title: "WEIGHMENT SLIP", company: "Company name", debtor: "Debtor",
 };
 const KEY_LABEL: Record<BuiltinKey, string> = {
-  serial: "Invoice / serial no", party: "Party / seller", material: "Material", vehicle: "Vehicle no", gross_weight: "Loaded weight", gross_date: "Loaded date",
+  serial: "Invoice / serial no", party: "Debtor", material: "Material", vehicle: "Vehicle no", gross_weight: "Loaded weight", gross_date: "Loaded date",
   gross_time: "Loaded time", tare_weight: "Empty weight", tare_date: "Empty date", tare_time: "Empty time", net_weight: "Net weight", charge: "Charge / fee",
   payment_mode: "Payment mode", debtor: "Debtor", notes: "Notes", operator: "Operator", site: "Site", title: "Title", company: "Company name",
 };

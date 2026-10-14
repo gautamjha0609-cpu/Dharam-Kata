@@ -15,7 +15,7 @@ const baseJob = (over: Partial<ClaimedJob> = {}): ClaimedJob => ({
 
 function harness(opts: { job?: ClaimedJob | null; installed?: string[]; printOk?: boolean; eventFailsFor?: EventStatus[]; rejectEvents?: boolean; preflight?: string | null } = {}) {
   const events: { status: EventStatus; code?: string }[] = [];
-  const printed: { html: string; deviceName: string; w: number; h: number; copies: number }[] = [];
+  const printed: { html: string; deviceName: string; w: number; h: number; copies: number; fileName?: string }[] = [];
   let pending: PendingAck[] = [];
   const submitted = new Set<string>();
   const failFor = new Set(opts.eventFailsFor ?? []);
@@ -31,7 +31,7 @@ function harness(opts: { job?: ClaimedJob | null; installed?: string[]; printOk?
     list: async () => opts.installed ?? ["EPSON LQ-310", "Microsoft Print to PDF"],
     check: async () => opts.preflight ?? null,
     print: async (html, o) => {
-      printed.push({ html, deviceName: o.deviceName, w: o.widthMm, h: o.heightMm, copies: o.copies });
+      printed.push({ html, deviceName: o.deviceName, w: o.widthMm, h: o.heightMm, copies: o.copies, fileName: o.fileName });
       return opts.printOk === false ? { ok: false, error: "printer offline" } : { ok: true };
     },
   };
@@ -147,6 +147,17 @@ describe("printer status, copies and reprint marking", () => {
     expect(mapPrintError("Printer is out of paper")).toBe("paper_out");
     expect(mapPrintError("paper jam detected")).toBe("paper_jam");
     expect(mapPrintError("printer offline")).toBe("printer_offline");
+  });
+});
+
+describe("PDF printers", () => {
+  it("gets a file name of the form invoice no._vehicle no_date, and an opening slip is told apart", async () => {
+    const h = harness({ job: baseJob({ payload: { ...baseJob().payload, vehicle: "RJ14 GD 9158" } }) });
+    await h.core.tick();
+    expect(h.printed[0]!.fileName).toMatch(/^VNK_26-27_000125_RJ14_GD_9158_[0-9]{2}-[0-9]{2}-[0-9]{4}$/);
+    const o = harness({ job: baseJob({ payload: { ...baseJob().payload, stage: "open" } }) });
+    await o.core.tick();
+    expect(o.printed[0]!.fileName).toMatch(/_opening$/);
   });
 });
 

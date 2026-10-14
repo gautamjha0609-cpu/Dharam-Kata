@@ -58,7 +58,7 @@ export default function InvoicesPage() {
     <div>
       <PageHead title="Invoices" sub="Search issued invoices. Most recent first." />
       <div className="card mb-3 grid gap-3 sm:grid-cols-4">
-        <input className="field sm:col-span-2" type="search" placeholder="Invoice no, vehicle or party…" aria-label="Search" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="field sm:col-span-2" type="search" placeholder="Invoice no, vehicle or debtor…" aria-label="Search" value={q} onChange={(e) => setQ(e.target.value)} />
         <DateInput clearable className="field" aria-label="From date" value={from} onChange={(e) => setFrom(e.target.value)} />
         <DateInput clearable className="field" aria-label="To date" value={to} onChange={(e) => setTo(e.target.value)} />
         <Select className="field" aria-label="Payment mode" value={mode} onChange={(e) => setMode(e.target.value)}>

@@ -1,5 +1,14 @@
 import { BrowserWindow } from "electron";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { PrinterPort } from "./core";
+
+/**
+ * "Microsoft Print to PDF", "Adobe PDF", "CutePDF" ... are file printers: Windows opens a "Save print output as" window for every job, which a
+ * silent agent can never answer (the job then ends as "Print job canceled"). For these the agent writes the PDF itself, straight into a folder.
+ */
+export const isFilePrinter = (name: string) => /pdf|xps document writer|print to file/i.test(name);
+const safeName = (s: string) => s.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 120) || "slip";
 
 let host: BrowserWindow | null = null;
 function hostWindow(): BrowserWindow {
@@ -15,6 +24,9 @@ function hostWindow(): BrowserWindow {
 const OFFLINE = 0x80, PAPER_OUT = 0x10, PAPER_JAM = 0x8, NOT_AVAILABLE = 0x1000;
 
 export class ElectronPrinter implements PrinterPort {
+  /** `pdfDir` tells where PDF files go (a folder on this PC; created when needed). */
+  constructor(private readonly pdfDir: () => string = () => "") {}
+
   async list(): Promise<string[]> {
     const printers = await hostWindow().webContents.getPrintersAsync();
     return printers.map((p) => p.name);
@@ -34,11 +46,23 @@ export class ElectronPrinter implements PrinterPort {
    * Silent print: no dialog, exact Windows device name, fixed page size in microns, zero margins, 100% scale.
    * The callback means the OS print subsystem accepted/rejected the job. It is NOT proof of paper output.
    */
-  async print(html: string, o: { deviceName: string; widthMm: number; heightMm: number; copies: number }) {
+  async print(html: string, o: { deviceName: string; widthMm: number; heightMm: number; copies: number; fileName?: string }): Promise<{ ok: boolean; error?: string; note?: string }> {
     // JavaScript is disabled in the render window: layout HTML is data, never executable.
     const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false, contextIsolation: true } });
     try {
       await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+      const dir = this.pdfDir();
+      if (dir && isFilePrinter(o.deviceName)) {
+        // the page size comes from the layout's own @page rule (paper size in mm, zero margins), so the PDF is exactly the slip
+        const pdf = await win.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true, margins: { top: 0, bottom: 0, left: 0, right: 0 } });
+        const d = new Date();
+        const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const folder = join(dir, day);
+        mkdirSync(folder, { recursive: true });
+        const file = join(folder, `${safeName(o.fileName ?? `slip_${d.getHours()}${d.getMinutes()}${d.getSeconds()}`)}.pdf`);
+        writeFileSync(file, pdf);
+        return { ok: true, note: `${o.deviceName} cannot print silently, so the slip was saved as a PDF file: ${file}` };
+      }
       return await new Promise<{ ok: boolean; error?: string }>((resolve) => {
         const timer = setTimeout(() => resolve({ ok: false, error: "print timeout" }), 60_000);
         win.webContents.print(

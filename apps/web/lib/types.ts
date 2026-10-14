@@ -54,7 +54,8 @@ export interface Party {
   party_type: string;
   gstin: string | null;
   phone: string | null;
-  city: string | null;
+  pan?: string | null;
+  address?: string | null;
   active: boolean;
 }
 

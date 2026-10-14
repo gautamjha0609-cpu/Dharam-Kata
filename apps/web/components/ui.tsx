@@ -79,7 +79,8 @@ const PRINT: Record<string, { label: string; icon: string; cls: string }> = {
   cancelled: { label: "Cancelled", icon: "–", cls: "bg-slate-100 text-slate-600" },
 };
 export const PRINT_ERRORS: Record<string, string> = {
-  layout_overflow: "Some text is too long for the ticket layout (e.g. a long material or party name). Shorten it or widen the field in Settings → Receipt layout, then reprint.",
+  layout_overflow: "Some text is too long for the ticket layout (e.g. a long material or debtor name). Shorten it or widen the field in Settings → Receipt layout, then reprint.",
+  print_cancelled: "The print job was cancelled on the printer PC (for example a PDF printer's Save-as window was closed). Reprint it; PDF printers now save the file automatically with the newest agent.",
   printer_missing: "The printer is not installed on the printer PC (or its name changed). Check the printer and re-assign it in Settings → Printing.",
   printer_offline: "The printer is offline. Switch it on / check the cable. Safe automatic retries run for a few minutes; if it still fails, reprint.",
   paper_out: "The printer is out of paper. Load paper. Safe automatic retries run for a few minutes; if it still fails, reprint.",

@@ -8,5 +8,6 @@ contextBridge.exposeInMainWorld("agent", {
   backupChoose: () => ipcRenderer.invoke("backup-choose"),
   backupOpen: () => ipcRenderer.invoke("backup-open"),
   logOpen: () => ipcRenderer.invoke("log-open"),
+  websiteOpen: () => ipcRenderer.invoke("website-open"),
   onState: (cb: () => void) => ipcRenderer.on("state-changed", () => cb()),
 });

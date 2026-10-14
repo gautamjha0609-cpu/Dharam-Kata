@@ -10,7 +10,7 @@ import { logFilePath, logLine } from "./logger";
 import { FileJournal, clearToken, loadConfig, loadToken, saveConfig, saveToken } from "./store";
 
 // Set at build time to your deployed website, e.g. https://dharam-kata.vercel.app (must be HTTPS in production).
-const DEFAULT_SERVER = process.env.DK_SERVER_URL || "http://localhost:3000";
+const DEFAULT_SERVER = process.env.DK_SERVER_URL || "https://dharam-kata.vercel.app";
 const APP_ID = "in.thevaluationhouse.dharamkata.printagent";
 const POLL_MS = 5_000;
 const MAX_POLL_MS = 60_000; // while the server cannot be reached the agent backs off instead of knocking every 5 s
@@ -27,7 +27,7 @@ app.setAppUserModelId(APP_ID);
 let win: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
-const printer = new ElectronPrinter();
+const printer = new ElectronPrinter(() => join(loadConfig(DEFAULT_SERVER).backupDir || defaultBackupDir(), "PDF printouts"));
 const log: string[] = [];
 const state = { connected: false, lastError: "", lastJob: "", printers: [] as string[], jobsPrinted: 0 };
 let core: AgentCore | null = null;
@@ -140,10 +140,20 @@ function showWindow() {
   else { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
 }
 
+/** Opens the firm's website in the normal browser. Only the address this agent is paired with (https, or localhost while testing). */
+function openWebsite() {
+  const url = loadConfig(DEFAULT_SERVER).serverUrl;
+  try {
+    const u = new URL(url);
+    if (u.protocol === "https:" || ["localhost", "127.0.0.1"].includes(u.hostname)) void shell.openExternal(u.origin);
+  } catch { /* ignore a malformed address */ }
+}
+
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(uiFile("tray.png")));
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open Dharam Kata Print Agent", click: showWindow },
+    { label: "Open the website (dharam-kata.vercel.app)", click: openWebsite },
     { label: "Open the backup folder", click: () => void shell.openPath(backup.getRoot()) },
     { label: "Show the log file", click: () => shell.showItemInFolder(logFilePath()) },
     { type: "separator" },
@@ -218,6 +228,7 @@ ipcMain.handle("backup-choose", async () => {
   return { ok: true };
 });
 ipcMain.handle("backup-open", async () => { await shell.openPath(backup.getRoot()); return { ok: true }; });
+ipcMain.handle("website-open", () => { openWebsite(); return { ok: true }; });
 ipcMain.handle("log-open", () => { shell.showItemInFolder(logFilePath()); return { ok: true }; });
 
 ipcMain.handle("unpair", () => {
@@ -237,6 +248,6 @@ ipcMain.handle("test-print", async (_e, printerName: string, kind: "calibration"
     ? renderCalibrationHtml(layout)
     : renderHtml(layout, { serial: "TEST-000", vehicle: "TEST 0000", material: "SAMPLE", party: "TEST PRINT - NOT AN INVOICE", gross_weight: "0", tare_weight: "0", net_weight: "0", charge: "0" }).html;
   const r = await printer.print(html, { deviceName: printerName, widthMm: layout.paper.w, heightMm: layout.paper.h, copies: 1 });
-  note(r.ok ? `Test ${kind} sent to ${printerName}` : `Test print failed: ${r.error}`);
+  note(r.ok ? (r.note ?? `Test ${kind} sent to ${printerName}`) : `Test print failed: ${r.error}`);
   return r;
 });

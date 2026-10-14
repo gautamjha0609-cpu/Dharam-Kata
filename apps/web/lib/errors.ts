@@ -21,7 +21,9 @@ const MESSAGES: Record<string, string> = {
   weight_unit_not_set: "Set the billing weight unit (kg or tonne) in Settings first.",
   series_not_initialized: "Set up the invoice number series in Settings first.",
   invalid_rate: "Enter a valid price.",
-  party_required_for_credit: "Select a debtor/party for a credit invoice.",
+  party_required_for_credit: "Select a debtor for a credit entry.",
+  party_gstin_exists: "A debtor with this GSTIN already exists in your firm.",
+  party_name_exists: "A debtor with this name already exists in your firm.",
   invalid_amount_paid: "Paid now cannot be more than the amount of this entry.",
   invalid_amount: "Enter a valid amount.",
   open_entry_exists: "This vehicle already has an open entry. Check the vehicle again and choose whether to close it or start a new one.",
@@ -32,7 +34,6 @@ const MESSAGES: Record<string, string> = {
   reason_required: "A reason is required.",
   unit_locked_after_first_invoice: "The billing unit cannot change after the first invoice is issued.",
   series_would_reuse_numbers: "That start number would reuse an invoice number already issued.",
-  party_name_exists: "A party with this name already exists.",
   invalid_or_expired_code: "That code is invalid or has expired.",
 };
 

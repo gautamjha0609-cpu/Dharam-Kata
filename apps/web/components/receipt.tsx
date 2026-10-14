@@ -51,7 +51,7 @@ export function useReceipt(siteId?: string): ReceiptConfig {
     if (cached) setRes(cached);
     if (cached && tick === 0 && isFresh(key, 15_000)) return; // looked at a moment ago: no request at all
     let alive = true;
-    void supabase().rpc("receipt_context", { p_org: org.organization_id, p_site: (siteId ?? null) as unknown as string }).then(({ data, error }: { data: unknown; error: unknown }) => {
+    void supabase().rpc("receipt_context", { p_org: org.organization_id, p_site: (siteId || null) as unknown as string }).then(({ data, error }: { data: unknown; error: unknown }) => {
       if (!alive) return;
       if (error || !data) { setRes((r) => r ?? { layout: standard, published: false, imageVersion: null, floor: null }); return; }
       const d = data as { layout: unknown; image_version: number | null; printer_floor: string | number | null };

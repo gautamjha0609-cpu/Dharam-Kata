@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-context";
 import { friendlyError } from "@/lib/errors";
 import { fmtDateTime, inr, istLocalToIso, newIdemKey, nowIstLocal, num } from "@/lib/format";
-import { DomainError, normalizeVehicle, resolveWeights } from "@dk/domain";
+import { DomainError, checkVehicle, formatVehicle, resolveWeights } from "@dk/domain";
 import { Alert, Modal, PageHead, PrintBadge } from "@/components/ui";
 import { PartyPicker } from "@/components/party-picker";
 import { TicketPreview, previewValues, useReceipt } from "@/components/receipt";
@@ -50,6 +50,7 @@ export default function WeighmentPage() {
   const idem = useRef(newIdemKey());
   const [siteId, setSiteId] = useState("");
   const [vehicle, setVehicle] = useState("");
+  const [vehErr, setVehErr] = useState<string | null>(null); // the plate is not in a valid Indian format
   const [checking, setChecking] = useState(false);
   const [entries, setEntries] = useState<OpenEntry[] | null>(null); // null = vehicle not checked yet
   const [dues, setDues] = useState<Dues | null>(null);
@@ -95,7 +96,9 @@ export default function WeighmentPage() {
   /** The ONLY call that goes to the server while the vehicle number is typed: it runs when the operator presses "Check vehicle". */
   const check = useCallback(async (v: string) => {
     if (!org || !siteId) return;
-    if (normalizeVehicle(v).length < 4) return setError("Enter the complete vehicle number first.");
+    const plate = checkVehicle(v);
+    if (!plate.ok) { setVehErr(plate.message); return; }
+    setVehErr(null); v = formatVehicle(plate.value); setVehicle(v); // stored and shown in the standard form, e.g. RJ14 GD 9158
     setError(null); setChecking(true); setDone(null);
     const sb = supabase();
     const [o, d] = await Promise.all([
@@ -141,7 +144,7 @@ export default function WeighmentPage() {
   }
   const xp = extraPayload(custom.active, receipt.has, extra);
   const preview = useMemo(() => {
-    const base = { vehicle, material: askMaterial ? material : undefined, party: askParty || mode === "credit" ? partyName : undefined, notes: askNotes ? notes : undefined, paymentMode: mode, charge: amount || null, extra: xp };
+    const base = { vehicle, material: askMaterial ? material : undefined, party: mode === "credit" ? partyName : undefined, notes: askNotes ? notes : undefined, paymentMode: mode, charge: amount || null, extra: xp };
     if (entry) {
       return res
         ? previewValues({ ...base, serial: entry.invoice_number, gross: res.gross, grossAt: res.loadedWas === "first" ? entry.first_at : when, tare: res.tare, tareAt: res.loadedWas === "first" ? when : entry.first_at, net: res.net })
@@ -165,13 +168,12 @@ export default function WeighmentPage() {
     if (mode === "credit" && !partyId) return setError("Select the debtor / party for a credit entry.");
     if (mode === "credit" && paid !== "" && (!(paidNum >= 0) || paidNum > a)) return setError(`Paid now cannot be more than the amount (${inr(a)}).`);
     if (askMaterial && receipt.required("material") && !material.trim()) return setError("Enter the material.");
-    if (askParty && receipt.required("party") && !partyId) return setError("Select the party.");
     if (askNotes && receipt.required("notes") && !notes.trim()) return setError("Enter the notes.");
     const problem = extraProblem(custom.active, receipt.has, receipt.required, extra);
     if (problem) return setError(problem);
     setBusy(true);
     const common = {
-      p_amount: a, p_payment_mode: mode, p_party: partyId as unknown as string,
+      p_amount: a, p_payment_mode: mode, p_party: (mode === "credit" ? partyId : null) as unknown as string,
       p_material: (askMaterial && material ? material : null) as unknown as string, p_notes: (askNotes && notes ? notes : null) as unknown as string,
       p_extra: xp as unknown as Record<string, never>,
       p_time_mode: manual ? "manual" : "automatic", p_at: (manual ? istLocalToIso(at) : null) as unknown as string,
@@ -182,7 +184,17 @@ export default function WeighmentPage() {
     const { data, error: err } = choice === "close" && entry
       ? await sb.rpc("close_entry", { p_org: org.organization_id, p_weighment: entry.weighment_id, p_weight: w, p_expected_version: entry.version, ...common })
       : await sb.rpc("open_entry", { p_org: org.organization_id, p_site: siteId, p_vehicle: vehicle, p_weight: w, p_replace_open: (entries?.length ?? 0) > 0, ...common });
-    if (err) { setBusy(false); return setError(friendlyError(err)); } // the typed values stay on the form
+    if (err) {
+      setBusy(false);
+      // Somebody (or an earlier tab) changed this vehicle's entry since it was checked: look again and let the person choose, instead of a dead end.
+      if (/open_entry_exists|weighment_not_pending|version_conflict/.test(String((err as { message?: string }).message ?? ""))) {
+        const msg = friendlyError(err);
+        setChoice(null); setEntries(null);
+        await check(vehicle);
+        return setError(msg);
+      }
+      return setError(friendlyError(err)); // the typed values stay on the form
+    }
     const inv = (data as unknown as { invoice: Invoice }).invoice;
     const { data: job } = await sb.from("print_jobs").select("*").eq("invoice_id", inv.id).order("created_at", { ascending: false }).limit(1).maybeSingle();
     setBusy(false);
@@ -238,13 +250,14 @@ export default function WeighmentPage() {
           <div>
             <label className="label" htmlFor="veh">Vehicle number <span className="text-red-600">*</span></label>
             <div className="flex gap-2">
-              <input id="veh" className="field uppercase" autoCapitalize="characters" autoComplete="off" value={vehicle} disabled={ready}
+              <input id="veh" className={`field uppercase ${vehErr ? "!border-red-500 !bg-red-50" : ""}`} maxLength={14} autoCapitalize="characters" autoComplete="off" value={vehicle} disabled={ready}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (!ready) void check(vehicle); } }}
-                onChange={(e) => { setVehicle(e.target.value.toUpperCase()); setEntries(null); setChoice(null); }} placeholder="RJ14 GD 9158" />
+                onChange={(e) => { setVehicle(e.target.value.toUpperCase().replace(/[^A-Z0-9 -]/g, "")); setVehErr(null); setEntries(null); setChoice(null); }} placeholder="RJ14 GD 9158" aria-invalid={!!vehErr} />
               {!ready
                 ? <button type="button" className="btn-navy whitespace-nowrap" disabled={checking || !vehicle.trim()} onClick={() => void check(vehicle)}>{checking ? "Checking…" : "Check vehicle"}</button>
                 : <button type="button" className="btn-ghost whitespace-nowrap" onClick={() => resetForm()}>Change</button>}
             </div>
+            {vehErr && <p role="alert" className="mt-1 text-xs font-medium text-red-700">{vehErr}</p>}
             {!ready && <p className="mt-1 text-xs text-slate-600">Type the full number, then press the button (or Enter). Nothing is sent to the server before that.</p>}
           </div>
 
@@ -302,9 +315,9 @@ export default function WeighmentPage() {
                     : amount !== "" && <p className="mt-1 text-xs text-slate-600">Still to be paid after this: <b>{inr(Math.max(0, amountNum - (paid === "" ? 0 : paidNum)))}</b></p>}
                 </div>
               )}
-              {(askParty || mode === "credit") && (
-                <PartyPicker value={partyId} onChange={setPartyId} onName={setPartyName} required={mode === "credit" || receipt.required("party")}
-                  label={mode === "credit" ? "Debtor (required for credit)" : "Party"} />
+              {mode === "credit" && (
+                <PartyPicker value={partyId} onChange={setPartyId} onName={setPartyName} required
+                  label="Debtor (required for credit)" />
               )}
               {askMaterial && (
                 <div>
