@@ -1,4 +1,4 @@
-// Copies the freshly built installers into "<repo>/EXE Software":
+// Copies the freshly built installers into "<repo>/exe software to share with clients":
 //   v<version>_<date>_<time>/   a permanent folder for this version (installers + CHANGES.txt)
 //   00_CURRENT/                 always the newest version (sorts first), replaced on every publish
 // Usage: pnpm publish:exe "short note about what changed"
@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const agent = join(here, "..");
 const root = join(agent, "..", "..");
-const out = join(root, "EXE Software");
+const out = join(root, "exe software to share with clients");
 const version = JSON.parse(readFileSync(join(agent, "package.json"), "utf8")).version;
 const release = join(agent, "release");
 const installers = existsSync(release) ? readdirSync(release).filter((f) => f.endsWith(".exe") && f.includes(`-${version}`)) : [];
