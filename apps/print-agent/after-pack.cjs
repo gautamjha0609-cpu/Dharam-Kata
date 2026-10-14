@@ -21,11 +21,11 @@ exports.default = async function afterPack(context) {
     "file-version": version,
     "product-version": version,
     "version-string": {
-      ProductName: "Dharam Kata Print Agent",
-      FileDescription: "Dharam Kata Print Agent",
+      ProductName: context.packager.appInfo.productName,
+      FileDescription: context.packager.appInfo.productName,
       CompanyName: "The Valuation House",
       LegalCopyright: "The Valuation House",
-      OriginalFilename: "Dharam Kata Print Agent.exe",
+      OriginalFilename: `${context.packager.appInfo.productFilename}.exe`,
     },
   });
 };

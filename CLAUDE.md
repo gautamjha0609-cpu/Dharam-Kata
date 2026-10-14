@@ -8,11 +8,12 @@ When the Print Agent changes, or the owner asks for "the exe", do ALL of this wi
    deleted by hand, missing/failing old uninstaller, stale shortcuts + startup entry + old folder, deleted program file, user settings kept, all-in-one),
    and only if everything passes saves the files to `C:\Dharam Kata\exe software to share with clients\` as `v<version>_<date>_<time>\` (permanent copy)
    and `00_CURRENT\` (newest, sorts first).
-3. The installer must keep working whatever an old install left behind: `build/installer.nsh` closes the running agent, ignores a broken old uninstaller,
+3. SIDE BY SIDE: every version has its own identity (app id, folder, exe/shortcut names, uninstall entry, settings; see `electron-builder.config.cjs`). A new install must NEVER close, replace, repair or remove an older version a client still uses; the matrix checks this against the newest earlier shared version. A new version has to be paired once.
+4. The installer must keep working whatever an old install left behind: `build/installer.nsh` closes the running agent, ignores a broken old uninstaller,
    always recreates both shortcuts, fixes the start-with-Windows entry and removes old program folders. Do not remove those hooks. If a new situation
    shows up (a client message such as "missing shortcut"), add it as a scenario to `scripts/test-installer.ps1` FIRST, make it fail, then fix.
-4. Never leave a client-shareable file that has not passed the matrix. Tell the owner which Windows types could NOT be tested here (ia32 / arm64).
-5. Never commit the installers (the folder is git-ignored). Installers are unsigned: SmartScreen "More info -> Run anyway" is expected.
+5. Never leave a client-shareable file that has not passed the matrix. Tell the owner which Windows types could NOT be tested here (ia32 / arm64).
+6. Never commit the installers (the folder is git-ignored). Installers are unsigned: SmartScreen "More info -> Run anyway" is expected.
 
 ## Web
 - Platform admin lives at the secret path in `apps/web/lib/admin-path.ts`; keep the repo private.
