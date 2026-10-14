@@ -67,11 +67,12 @@ export function NoticeHost() {
   useEffect(() => {
     if (!orgId) return;
     let live = true;
-    void supabase().from("broadcasts").select("id,message,created_at").order("created_at", { ascending: false }).limit(3)
+    const now = new Date().toISOString();
+    void supabase().from("broadcasts").select("id,message,show_count").is("stopped_at", null).lte("starts_at", now).gt("expires_at", now).order("created_at", { ascending: false }).limit(5)
       .then(({ data }: { data: unknown }) => {
         if (!live) return;
-        for (const b of ((data ?? []) as { id: string; message: string }[]).reverse()) {
-          if (seen(`bc.${b.id}`) < 2) push({ key: `bc.${b.id}`, tone: "info", title: "Message from The Valuation House", text: b.message });
+        for (const b of ((data ?? []) as { id: string; message: string; show_count: number }[]).reverse()) {
+          if (seen(`bc.${b.id}`) < (b.show_count ?? 2)) push({ key: `bc.${b.id}`, tone: "info", title: "Message from The Valuation House", text: b.message });
         }
       });
     return () => { live = false; };

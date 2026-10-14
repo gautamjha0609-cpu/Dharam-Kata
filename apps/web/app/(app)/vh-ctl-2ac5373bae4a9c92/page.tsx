@@ -1,5 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { ADMIN_PATH } from "@/lib/admin-path";
 import { checkMobile, daysLeft, istToday } from "@dk/domain";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-context";
@@ -87,7 +89,7 @@ export default function PlatformAdminPage() {
 
   return (
     <div className="space-y-5">
-      <PageHead title="Platform admin" sub="Client firms (tenants). Each firm's data is fully separate. Each firm's service runs one year at a time." />
+      <PageHead title="Platform admin" sub="Client firms (tenants). Each firm's data is fully separate. Each firm's service runs one year at a time." actions={<Link href={ADMIN_PATH + "/communication"} className="btn-navy">📣 Communication</Link>} />
       {msg && <Alert kind={msg.k}>{msg.t}</Alert>}
 
       <section className="card space-y-3">
@@ -110,8 +112,6 @@ export default function PlatformAdminPage() {
         <p className="text-xs text-slate-600">You set the owner's password; the owner cannot change it. Passwords are never shown again.</p>
         <button className="btn-primary" disabled={busy || !f.display_name || !f.slug || !f.owner_login_id || f.owner_temp_password.length < 10} onClick={create}>{busy ? "Creating…" : "Create firm"}</button>
       </section>
-
-      <Broadcasts onMsg={setMsg} />
 
       <section>
         <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
@@ -216,57 +216,6 @@ function EditFirm({ org, onClose, onSaved }: { org: Org | null; onClose: () => v
         <button className="btn-primary w-full" disabled={busy || !v.display.trim()} onClick={() => void save()}>{busy ? "Saving…" : "Save changes"}</button>
       </div>
     </Modal>
-  );
-}
-
-/** One message to every firm. Users see it when they open the app (twice, ten seconds each). */
-function Broadcasts({ onMsg }: { onMsg: (m: Msg) => void }) {
-  const [text, setText] = useState("");
-  const [days, setDays] = useState("15");
-  const [busy, setBusy] = useState(false);
-  const [list, setList] = useState<{ id: string; message: string; created_at: string; expires_at: string }[]>([]);
-  const load = useCallback(async () => {
-    const { data } = await supabase().from("broadcasts").select("id,message,created_at,expires_at").order("created_at", { ascending: false }).limit(10);
-    setList((data ?? []) as typeof list);
-  }, []);
-  useEffect(() => { void load(); }, [load]);
-
-  async function send() {
-    setBusy(true);
-    const { error } = await supabase().rpc("platform_send_broadcast", { p_message: text, p_days: Number(days) });
-    setBusy(false);
-    if (error) return onMsg({ k: "error", t: "Could not send the message." });
-    setText(""); onMsg({ k: "ok", t: "Message sent to all firms. They will see it when they open the app." }); void load();
-  }
-  async function end(id: string) {
-    await supabase().rpc("platform_end_broadcast", { p_id: id });
-    void load();
-  }
-  return (
-    <section className="card space-y-3">
-      <h2 className="font-bold text-navy">Message to all firms</h2>
-      <p className="text-sm text-slate-600">For maintenance notices and announcements. Every user sees it when they open the app: two times, 10 seconds each, with a small cross to close it.</p>
-      <textarea className="field !min-h-[84px] py-2" maxLength={500} rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder="Write the message (up to 500 characters)" aria-label="Message" />
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="text-sm text-slate-700" htmlFor="bd">Show for</label>
-        <Select id="bd" className="field !min-h-[40px] !w-auto" value={days} onChange={(e) => setDays(e.target.value)}><option value="3">3 days</option><option value="7">7 days</option><option value="15">15 days</option><option value="30">30 days</option></Select>
-        <span className="text-xs text-slate-500">{text.length}/500</span>
-        <button className="btn-primary" disabled={busy || !text.trim()} onClick={() => void send()}>{busy ? "Sending…" : "Send to all firms"}</button>
-      </div>
-      {list.length > 0 && (
-        <ul className="divide-y divide-slate-100 text-sm">
-          {list.map((b) => {
-            const live = new Date(b.expires_at).getTime() > Date.now();
-            return (
-              <li key={b.id} className="flex flex-wrap items-start justify-between gap-2 py-2">
-                <span className={live ? "" : "text-slate-400"}>{b.message}<span className="block text-xs text-slate-500">{fmtDateTime(b.created_at)}{live ? ` · live until ${fmtDateTime(b.expires_at)}` : " · ended"}</span></span>
-                {live && <button className="btn-ghost !min-h-[32px]" onClick={() => void end(b.id)}>End now</button>}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
   );
 }
 
