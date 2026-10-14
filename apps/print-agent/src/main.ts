@@ -11,8 +11,10 @@ import { FileJournal, clearToken, loadConfig, loadToken, saveConfig, saveToken }
 
 // Set at build time to your deployed website, e.g. https://dharam-kata.vercel.app (must be HTTPS in production).
 const DEFAULT_SERVER = process.env.DK_SERVER_URL || "https://dharam-kata.vercel.app";
-// each version has its own identity (see electron-builder.config.cjs): versions can be installed and run side by side
-const APP_ID = `in.thevaluationhouse.dharamkata.printagent.v${app.getVersion().replace(/./g, "-")}`;
+// pairing and settings live in one folder for ALL versions, so updating the agent never needs pairing again
+app.setPath("userData", join(app.getPath("appData"), "Dharam Kata Print Agent"));
+// the installer removes every older version, so only the newest is installed
+const APP_ID = `in.thevaluationhouse.dharamkata.printagent.v${app.getVersion().replace(/\./g, "-")}`;
 const PRODUCT = `Dharam Kata Print Agent ${app.getVersion()}`;
 const POLL_MS = 5_000;
 const MAX_POLL_MS = 60_000; // while the server cannot be reached the agent backs off instead of knocking every 5 s

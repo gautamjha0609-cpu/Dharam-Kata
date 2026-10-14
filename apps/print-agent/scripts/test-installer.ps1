@@ -1,14 +1,14 @@
 # Installer test matrix. Runs the REAL installer on this PC through every situation a client can be in and checks that
 #   (1) the new version ALWAYS installs: program present, both shortcuts point at it, its start-with-Windows entry is right, it starts;
-#   (2) an OLDER version that is installed (and even running) is NEVER touched: same process keeps running, files, shortcut, startup entry stay.
-# Leaves this PC with both versions uninstalled.
+#   (2) an OLDER version that is installed (even running) is closed and removed completely, and the install stays fast (under 60 s).
+# Leaves this PC with all versions uninstalled.
 # Usage: powershell -ExecutionPolicy Bypass -File scripts/test-installer.ps1 -Version 0.1.3 -Installer <x64 installer> [-AllInOne <big installer>] [-OldInstaller <installer of the previous version>]
 param([Parameter(Mandatory = $true)][string]$Version, [Parameter(Mandatory = $true)][string]$Installer, [string]$AllInOne = "", [string]$OldInstaller = "", [string]$OldVersion = "0.1.2")
 $ErrorActionPreference = "Stop"
 $name = "Dharam Kata Print Agent $Version"                       # program, shortcuts, start-up entry of THIS version
 $dir = Join-Path $env:LOCALAPPDATA "Programs\dharam-kata-print-agent-$Version"
 $exe = Join-Path $dir "$name.exe"
-$data = Join-Path $env:APPDATA $name
+$data = Join-Path $env:APPDATA "Dharam Kata Print Agent"      # pairing + settings: one folder for all versions
 $desktop = [Environment]::GetFolderPath("Desktop")
 $startMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
 $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
@@ -128,7 +128,7 @@ if ($code15 -eq 0) { $p15 += "installer reported success although the program fi
 foreach ($l in @("$desktop\$name.lnk", "$startMenu\$name.lnk")) { if (Test-Path $l) { $p15 += "a shortcut to a missing program was left: $l" } }
 Add-Result "15 antivirus deletes the program right after install" $p15
 
-# ---- an OLDER version that a client still uses must stay untouched ---------------------------------------------------------------
+# ---- an OLDER version is removed completely and the new one installs ----------------------------------------------------------
 if ($OldInstaller -and (Test-Path $OldInstaller)) {
   Uninstall-Clean; Uninstall-Old
   $oc = Install $OldInstaller                                    # the older version, exactly as a client has it
@@ -136,35 +136,26 @@ if ($OldInstaller -and (Test-Path $OldInstaller)) {
   if ($oc -ne 0 -or -not (Test-Path $oldExe)) { $pOld += "could not set up the older version for the test (exit $oc)" }
   else {
     Start-Process $oldExe; Start-Sleep 6
-    $oldProc = Get-Process -Name $oldName -ErrorAction SilentlyContinue | Select-Object -First 1
-    $oldRun = (Get-ItemProperty $runKey -ErrorAction SilentlyContinue).$oldName
-    $oldLnkTarget = $sh.CreateShortcut("$startMenu\$oldName.lnk").TargetPath
-    if (-not $oldProc) { $pOld += "the older version did not start for the test" }
+    if (-not (Get-Process -Name $oldName -ErrorAction SilentlyContinue)) { $pOld += "the older version did not start for the test" }
     else {
-      $oldIds = @(Get-Process -Name $oldName | ForEach-Object { $_.Id })
-      # install the new version while the old one is open and in use
+      # install the new version while the old one is open and in use: it must be closed and removed, the new one must work
+      $sw = [Diagnostics.Stopwatch]::StartNew()
       Check "16 new version installs while an OLDER version is installed and running" (Install $Installer)
-      $pOld = @()
-      $still = @(Get-Process -Name $oldName -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
-      if (-not ($oldIds | Where-Object { $still -contains $_ })) { $pOld += "the older version was closed" }
-      if (-not (Test-Path $oldExe)) { $pOld += "the older version's program file was removed" }
-      if ($sh.CreateShortcut("$startMenu\$oldName.lnk").TargetPath -ne $oldLnkTarget) { $pOld += "the older version's shortcut was changed" }
-      if (-not (Test-Path "$desktop\$oldName.lnk")) { $pOld += "the older version's desktop shortcut is gone" }
-      if ((Get-ItemProperty $runKey -ErrorAction SilentlyContinue).$oldName -ne $oldRun) { $pOld += "the older version's start-with-Windows entry was changed" }
-      if (-not (Get-ChildItem $unKey | Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -in @($oldName, "$oldName $OldVersion") })) { $pOld += "the older version's uninstall entry is gone" }
-      Add-Result "17 ...and the older version is left exactly as it was (still running)" $pOld
-      # removing the new version must not remove the old one either
-      Uninstall-Clean
-      $p18 = @()
-      if (-not (Test-Path $oldExe)) { $p18 += "uninstalling the new version removed the older program" }
-      if (-not (Test-Path "$startMenu\$oldName.lnk")) { $p18 += "uninstalling the new version removed the older shortcut" }
-      if (-not (Get-Process -Name $oldName -ErrorAction SilentlyContinue)) { $p18 += "uninstalling the new version closed the older version" }
-      Add-Result "18 uninstalling the new version leaves the older version working" $p18
+      $secs = [int]$sw.Elapsed.TotalSeconds
+      $p17 = @()
+      if (Get-Process -Name $oldName -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $oldExe }) { $p17 += "the older version is still running" }
+      if (Test-Path $oldDir) { $p17 += "the older version's folder is still there" }
+      if (Test-Path "$desktop\$oldName.lnk") { $p17 += "the older desktop shortcut is still there" }
+      if (Test-Path "$startMenu\$oldName.lnk") { $p17 += "the older Start-menu shortcut is still there" }
+      if ((Get-ItemProperty $runKey -ErrorAction SilentlyContinue).$oldName) { $p17 += "the older start-with-Windows entry is still there" }
+      if (Get-ChildItem $unKey | Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -in @($oldName, "$oldName $OldVersion") }) { $p17 += "the older uninstall entry is still there" }
+      Add-Result "17 ...and the older version is gone completely (no leftovers)" $p17
+      Add-Result "18 install with an older version present finishes within 60 seconds ($secs s)" $(if ($secs -gt 60) { @("took $secs seconds") } else { @() })
     }
   }
-  if ($pOld.Count -gt 0 -and -not ($results | Where-Object { $_.Scenario -like "16*" })) { Add-Result "16 older-version scenarios" $pOld }
+  if ($pOld.Count -gt 0) { Add-Result "16 older-version scenarios" $pOld }
   Uninstall-Old
-} else { Write-Host "(no older installer given: the 'older version still in use' scenarios were skipped)" }
+} else { Write-Host "(no older installer given: the 'older version' scenarios were skipped)" }
 
 # leave this PC clean
 Uninstall-Clean

@@ -8,7 +8,7 @@ When the Print Agent changes, or the owner asks for "the exe", do ALL of this wi
    deleted by hand, missing/failing old uninstaller, stale shortcuts + startup entry + old folder, deleted program file, user settings kept, all-in-one),
    and only if everything passes saves the files to `C:\Dharam Kata\exe software to share with clients\` as `v<version>_<date>_<time>\` (permanent copy)
    and `00_CURRENT\` (newest, sorts first).
-3. SIDE BY SIDE: every version has its own identity (app id, folder, exe/shortcut names, uninstall entry, settings; see `electron-builder.config.cjs`). A new install must NEVER close, replace, repair or remove an older version a client still uses; the matrix checks this against the newest earlier shared version. A new version has to be paired once.
+3. NEW REPLACES OLD (owner decision, 2026-10-14): the installer closes and fully removes every earlier version (folders, shortcuts, start-up and uninstall entries, never via an old uninstaller) and installs in under a minute. Pairing and settings live in one shared folder, so updating needs no re-pairing.
 4. The installer must keep working whatever an old install left behind: `build/installer.nsh` closes the running agent, ignores a broken old uninstaller,
    always recreates both shortcuts, fixes the start-with-Windows entry and removes old program folders. Do not remove those hooks. If a new situation
    shows up (a client message such as "missing shortcut"), add it as a scenario to `scripts/test-installer.ps1` FIRST, make it fail, then fix.

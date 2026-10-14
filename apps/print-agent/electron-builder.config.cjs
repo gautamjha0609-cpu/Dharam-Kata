@@ -1,9 +1,5 @@
-// Installer configuration. EVERY VERSION HAS ITS OWN IDENTITY so versions live side by side:
-// installing a new version never closes, replaces or uninstalls an older one that a client is still using.
-//   app id / uninstall entry : in.thevaluationhouse.dharamkata.printagent.v<version>
-//   install folder           : %LOCALAPPDATA%\Programs\dharam-kata-print-agent-<version>
-//   program, shortcuts       : "Dharam Kata Print Agent <version>"
-//   settings, pairing, log   : %APPDATA%\Dharam Kata Print Agent <version>   (so the new version is paired on its own; the old keeps working)
+// Installer configuration. The version is part of the names (program, folder, uninstall entry); the installer REMOVES every earlier version completely
+// (build/installer.nsh), so a PC only ever has the newest one. Pairing and settings stay in %APPDATA%Dharam Kata Print Agent for all versions.
 const { version } = require("./package.json");
 
 const productName = `Dharam Kata Print Agent ${version}`;
