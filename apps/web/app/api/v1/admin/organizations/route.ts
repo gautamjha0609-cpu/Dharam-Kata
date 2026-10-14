@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { loginIdToEmail } from "@/lib/supabase";
 import { serviceClient } from "@/lib/supabase-server";
-import { checkMobile } from "@dk/domain";
+import { checkGstin, checkMobile, checkPan } from "@dk/domain";
 import { currentUser, fail, ok, LOGIN_ID, PASSWORD_POLICY, rateLimit, rpcErrorMessage } from "@/lib/api";
 
 const Body = z.object({
@@ -16,6 +16,8 @@ const Body = z.object({
   contact_mobile: z.string().trim().max(20).optional().default(""),
   contact_email: z.union([z.literal(""), z.string().trim().max(200).email("Enter a valid email address")]).optional().default(""),
   referral: z.string().trim().max(120).optional().default(""),
+  gstin: z.string().trim().max(20).optional().default(""),
+  pan: z.string().trim().max(12).optional().default(""),
   activation_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
@@ -31,6 +33,10 @@ export async function POST(req: Request) {
   const b = parsed.data;
   const mobile = b.contact_mobile ? checkMobile(b.contact_mobile) : null;
   if (mobile && !mobile.ok) return fail(400, "invalid_request", mobile.message);
+  const gstin = b.gstin ? checkGstin(b.gstin) : null, pan = b.pan ? checkPan(b.pan) : null; // both may be left empty
+  if (gstin && !gstin.ok) return fail(400, "invalid_request", gstin.message);
+  if (pan && !pan.ok) return fail(400, "invalid_request", pan.message);
+  if (gstin?.ok && pan?.ok && gstin.value.slice(2, 12) !== pan.value) return fail(400, "invalid_request", "This PAN does not match the GSTIN.");
 
   const svc = serviceClient();
   const created = await svc.auth.admin.createUser({ email: loginIdToEmail(b.owner_login_id), password: b.owner_temp_password, email_confirm: true, user_metadata: { login_id: b.owner_login_id } });
@@ -47,7 +53,7 @@ export async function POST(req: Request) {
   // contact details, referral and the service term (one year from the activation date) are set with the admin's own session
   const upd = await user.sb.rpc("platform_update_org", {
     p_org: data as string, p_legal: b.legal_name, p_display: b.display_name, p_mobile: mobile && mobile.ok ? mobile.value : "", p_email: b.contact_email,
-    p_referral: b.referral, p_activation: (b.activation_date ?? null) as unknown as string,
+    p_referral: b.referral, p_gstin: gstin?.ok ? gstin.value : "", p_pan: pan?.ok ? pan.value : gstin?.ok ? gstin.value.slice(2, 12) : "", p_activation: (b.activation_date ?? null) as unknown as string,
     p_until: (b.activation_date ? new Date(new Date(`${b.activation_date}T00:00:00Z`).setUTCFullYear(new Date(`${b.activation_date}T00:00:00Z`).getUTCFullYear() + 1)).toISOString().slice(0, 10) : null) as unknown as string,
   });
   if (upd.error) return fail(500, "partial", "The firm was created, but its contact details or dates could not be saved. Open Edit on the firm and set them.");

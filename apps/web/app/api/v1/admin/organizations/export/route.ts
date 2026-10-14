@@ -11,7 +11,7 @@ const dmy = (d: string | null) => (d ? d.split("-").reverse().join("-") : "");
 
 interface Org {
   id: string; display_name: string; legal_name: string; slug: string; status: string; created_at: string; suspended_at: string | null; suspension_reason: string | null;
-  contact_mobile: string | null; contact_email: string | null; referral: string | null; activation_date: string; service_until: string; extension_count: number; last_extended_at: string | null; plan_code: string;
+  contact_mobile: string | null; contact_email: string | null; referral: string | null; gstin: string | null; pan: string | null; activation_date: string; service_until: string; extension_count: number; last_extended_at: string | null; plan_code: string;
 }
 const kindOf = (o: Org) => (o.status === "suspended" ? "suspended" : daysLeft(o.service_until) <= 0 ? "expired" : !["active", "trial", "grace"].includes(o.status) ? "other" : daysLeft(o.service_until) <= 10 ? "due_soon" : "active");
 
@@ -30,7 +30,7 @@ export async function GET(req: Request) {
   if (error) return fail(500, "query_failed", "Could not read the firms.");
   let orgs = (data ?? []) as unknown as Org[];
   if (["active", "due_soon", "expired", "suspended", "other"].includes(status)) orgs = orgs.filter((o) => kindOf(o) === status);
-  const cell = (o: Org): Record<string, string | null> => ({ referral: o.referral, name: o.display_name, legal: o.legal_name, slug: o.slug, mobile: o.contact_mobile, email: o.contact_email });
+  const cell = (o: Org): Record<string, string | null> => ({ referral: o.referral, name: o.display_name, legal: o.legal_name, slug: o.slug, mobile: o.contact_mobile, email: o.contact_email, gstin: o.gstin, pan: o.pan });
   if (value && column in cell(orgs[0] ?? ({} as Org))) orgs = orgs.filter((o) => (cell(o)[column] ?? "").toLowerCase().includes(value));
 
   const ids = orgs.map((o) => o.id);
@@ -48,7 +48,7 @@ export async function GET(req: Request) {
   const ws = wb.addWorksheet("Firms", { views: [{ state: "frozen", ySplit: 1 }] });
   ws.columns = [
     { header: "Display name", key: "dn", width: 28 }, { header: "Legal name", key: "ln", width: 30 }, { header: "Short ID", key: "slug", width: 20 }, { header: "Standing", key: "kind", width: 16 }, { header: "Status", key: "st", width: 12 },
-    { header: "Referral", key: "ref", width: 22 }, { header: "Mobile", key: "mob", width: 14 }, { header: "Email", key: "em", width: 28 },
+    { header: "Referral", key: "ref", width: 22 }, { header: "Mobile", key: "mob", width: 14 }, { header: "Email", key: "em", width: 28 }, { header: "GSTIN", key: "gst", width: 18 }, { header: "PAN", key: "pan", width: 13 },
     { header: "Activation date", key: "act", width: 15 }, { header: "Valid till", key: "until", width: 13 }, { header: "Days left", key: "left", width: 10 }, { header: "Times extended", key: "ext", width: 14 }, { header: "Last extended", key: "lext", width: 18 },
     { header: "Owner login", key: "ol", width: 20 }, { header: "Owner name", key: "on", width: 22 }, { header: "Users", key: "users", width: 8 }, { header: "Sites", key: "sites", width: 8 },
     { header: "Created", key: "cr", width: 18 }, { header: "Suspended at", key: "sat", width: 18 }, { header: "Suspension reason", key: "sr", width: 28 }, { header: "Plan", key: "plan", width: 10 },
@@ -60,7 +60,7 @@ export async function GET(req: Request) {
     const ms = members.filter((m) => m.organization_id === o.id), owner = ms.find((m) => m.role === "owner");
     const k = kindOf(o);
     const row = ws.addRow({
-      dn: o.display_name, ln: o.legal_name, slug: o.slug, kind: label[k], st: o.status, ref: o.referral ?? "", mob: o.contact_mobile ?? "", em: o.contact_email ?? "",
+      dn: o.display_name, ln: o.legal_name, slug: o.slug, kind: label[k], st: o.status, ref: o.referral ?? "", mob: o.contact_mobile ?? "", em: o.contact_email ?? "", gst: o.gstin ?? "", pan: o.pan ?? "",
       act: dmy(o.activation_date), until: dmy(o.service_until), left: daysLeft(o.service_until), ext: o.extension_count, lext: fmt(o.last_extended_at),
       ol: owner?.profiles?.login_id ?? "", on: owner?.profiles?.full_name ?? "", users: ms.length, sites: siteCount.get(o.id) ?? 0,
       cr: fmt(o.created_at), sat: fmt(o.suspended_at), sr: o.suspension_reason ?? "", plan: o.plan_code,

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ADMIN_PATH } from "@/lib/admin-path";
-import { checkMobile, daysLeft, istToday } from "@dk/domain";
+import { checkGstin, checkMobile, checkPan, daysLeft } from "@dk/domain";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-context";
 import { fmtDateTime } from "@/lib/format";
@@ -11,14 +11,28 @@ import { Alert, Modal, PageHead } from "@/components/ui";
 
 interface Org {
   id: string; display_name: string; legal_name: string; slug: string; status: string; created_at: string; suspension_reason: string | null;
-  contact_mobile: string | null; contact_email: string | null; referral: string | null; activation_date: string; service_until: string; extension_count: number; last_extended_at: string | null;
+  contact_mobile: string | null; contact_email: string | null; referral: string | null; gstin: string | null; pan: string | null; activation_date: string; service_until: string; extension_count: number; last_extended_at: string | null;
 }
-const COLS = "id,display_name,legal_name,slug,status,created_at,suspension_reason,contact_mobile,contact_email,referral,activation_date,service_until,extension_count,last_extended_at";
+const COLS = "id,display_name,legal_name,slug,status,created_at,suspension_reason,contact_mobile,contact_email,referral,gstin,pan,activation_date,service_until,extension_count,last_extended_at";
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const blank = { legal_name: "", display_name: "", slug: "", contact_mobile: "", contact_email: "", referral: "", activation_date: "", owner_login_id: "", owner_name: "", owner_temp_password: "", site_name: "Main", site_code: "MAIN" };
+const blank = { legal_name: "", display_name: "", slug: "", contact_mobile: "", contact_email: "", referral: "", gstin: "", pan: "", activation_date: "", owner_login_id: "", owner_name: "", owner_temp_password: "", site_name: "Main", site_code: "MAIN" };
 const dmy = (d: string) => new Date(`${d}T00:00:00+05:30`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
 
 type Msg = { k: "ok" | "error"; t: string };
+
+/** GSTIN / PAN are filled in only when the owner has them: empty is fine, anything typed must be in the correct format (and agree with each other). */
+function taxProblem(gstin: string, pan: string): string | null {
+  const g = gstin.trim() ? checkGstin(gstin) : null, p = pan.trim() ? checkPan(pan) : null;
+  if (g && !g.ok) return g.message;
+  if (p && !p.ok) return p.message;
+  if (g?.ok && p?.ok && g.value.slice(2, 12) !== p.value) return "This PAN does not match the GSTIN (a GSTIN contains the PAN).";
+  return null;
+}
+/** The clean values to store. A valid GSTIN fills an empty PAN by itself. */
+function taxValues(gstin: string, pan: string): { gstin: string; pan: string } {
+  const g = gstin.trim() ? checkGstin(gstin) : null, p = pan.trim() ? checkPan(pan) : null;
+  return { gstin: g?.ok ? g.value : "", pan: p?.ok ? p.value : g?.ok ? g.value.slice(2, 12) : "" };
+}
 type Kind = "active" | "due_soon" | "expired" | "suspended" | "other";
 /** One word for the firm's situation. "expired" = the service term ended and nobody has extended it yet. */
 function kindOf(o: Org): Kind {
@@ -49,7 +63,7 @@ export default function PlatformAdminPage() {
     if (filter.status !== "all" && k !== filter.status) return false;
     const v = filter.value.trim().toLowerCase();
     if (!v) return true;
-    const cell: Record<string, string | null> = { referral: o.referral, name: o.display_name, legal: o.legal_name, slug: o.slug, mobile: o.contact_mobile, email: o.contact_email };
+    const cell: Record<string, string | null> = { referral: o.referral, name: o.display_name, legal: o.legal_name, slug: o.slug, mobile: o.contact_mobile, email: o.contact_email, gstin: o.gstin, pan: o.pan };
     return (cell[filter.column] ?? "").toLowerCase().includes(v);
   }), [orgs, filter]);
 
@@ -63,9 +77,11 @@ export default function PlatformAdminPage() {
   async function create() {
     if (f.contact_mobile.trim() && !checkMobile(f.contact_mobile).ok) return setMsg({ k: "error", t: "Mobile number has 10 digits and starts with 6, 7, 8 or 9." });
     if (f.contact_email.trim() && !EMAIL.test(f.contact_email.trim())) return setMsg({ k: "error", t: "Enter a valid email address or leave it empty." });
+    const gp = taxProblem(f.gstin, f.pan);
+    if (gp) return setMsg({ k: "error", t: gp });
     setBusy(true); setMsg(null);
     const m = f.contact_mobile.trim() ? checkMobile(f.contact_mobile) : null;
-    const r = await post("/api/v1/admin/organizations", { ...f, contact_mobile: m && m.ok ? m.value : "", activation_date: f.activation_date || undefined });
+    const r = await post("/api/v1/admin/organizations", { ...f, ...taxValues(f.gstin, f.pan), contact_mobile: m && m.ok ? m.value : "", activation_date: f.activation_date || undefined });
     setBusy(false);
     if (!r.ok) return setMsg({ k: "error", t: r.message ?? "Could not create the firm." });
     setMsg({ k: "ok", t: `Created "${f.display_name}". The service runs for one year from the activation date. Give the owner their login ID and password.` });
@@ -103,6 +119,8 @@ export default function PlatformAdminPage() {
           <div><label className="label" htmlFor="b1">Mobile number (optional)</label><input id="b1" className="field" inputMode="tel" maxLength={14} value={f.contact_mobile} onChange={(e) => setF({ ...f, contact_mobile: e.target.value.replace(/[^0-9+\s-]/g, "") })} placeholder="98765 43210" /></div>
           <div><label className="label" htmlFor="b2">Email (optional)</label><input id="b2" type="email" className="field" autoCapitalize="none" value={f.contact_email} onChange={set("contact_email")} placeholder="owner@firm.com" /></div>
           <div className="sm:col-span-2"><label className="label" htmlFor="b3">Referral (optional)</label><input id="b3" className="field" maxLength={120} value={f.referral} onChange={set("referral")} placeholder="Who referred this firm" /></div>
+          <div><label className="label" htmlFor="b4">GSTIN</label><input id="b4" className={`field uppercase ${f.gstin && !checkGstin(f.gstin).ok ? "!border-red-500" : ""}`} maxLength={15} autoCapitalize="characters" placeholder="27ABCDE1234F1Z5" value={f.gstin} onChange={(e) => setF({ ...f, gstin: e.target.value.replace(/\s/g, "").toUpperCase() })} /></div>
+          <div><label className="label" htmlFor="b5">PAN</label><input id="b5" className={`field uppercase ${f.pan && !checkPan(f.pan).ok ? "!border-red-500" : ""}`} maxLength={10} autoCapitalize="characters" placeholder="ABCDE1234F" value={f.pan} onChange={(e) => setF({ ...f, pan: e.target.value.replace(/\s/g, "").toUpperCase() })} /></div>
           <div><label className="label" htmlFor="a4">First site name</label><input id="a4" className="field" value={f.site_name} onChange={set("site_name")} /></div>
           <div><label className="label" htmlFor="a5">First site code</label><input id="a5" className="field uppercase" value={f.site_code} onChange={set("site_code")} /></div>
           <div><label className="label" htmlFor="a6">Owner login ID</label><input id="a6" className="field" autoCapitalize="none" value={f.owner_login_id} onChange={(e) => setF({ ...f, owner_login_id: e.target.value.toLowerCase() })} /></div>
@@ -125,7 +143,7 @@ export default function PlatformAdminPage() {
             </Select></div>
           <div><label className="label text-xs" htmlFor="fc">Filter by column</label>
             <Select id="fc" className="field !min-h-[40px]" value={filter.column} onChange={(e) => setFilter({ ...filter, column: e.target.value })}>
-              <option value="referral">Referral</option><option value="name">Display name</option><option value="legal">Legal name</option><option value="slug">Short ID</option><option value="mobile">Mobile</option><option value="email">Email</option>
+              <option value="referral">Referral</option><option value="name">Display name</option><option value="legal">Legal name</option><option value="slug">Short ID</option><option value="mobile">Mobile</option><option value="email">Email</option><option value="gstin">GSTIN</option><option value="pan">PAN</option>
             </Select></div>
           <div><label className="label text-xs" htmlFor="fv">Contains</label><input id="fv" className="field !min-h-[40px]" type="search" value={filter.value} onChange={(e) => setFilter({ ...filter, value: e.target.value })} placeholder="Type to filter the list and the Excel" /></div>
         </div>
@@ -138,7 +156,7 @@ export default function PlatformAdminPage() {
                   <div className="min-w-0">
                     <p className={`font-semibold ${red ? "text-red-700" : "text-navy"}`}>{o.display_name} <span className={`text-sm font-normal ${red ? "text-red-600" : "text-slate-600"}`}>· {o.slug}</span></p>
                     <p className={`text-xs ${red ? "text-red-700" : "text-slate-600"}`}>
-                      {o.legal_name}{o.referral ? ` · referral: ${o.referral}` : ""}{o.contact_mobile ? ` · ${o.contact_mobile}` : ""}{o.contact_email ? ` · ${o.contact_email}` : ""}
+                      {o.legal_name}{o.referral ? ` · referral: ${o.referral}` : ""}{o.contact_mobile ? ` · ${o.contact_mobile}` : ""}{o.contact_email ? ` · ${o.contact_email}` : ""}{o.gstin ? ` · GSTIN ${o.gstin}` : ""}{o.pan ? ` · PAN ${o.pan}` : ""}
                     </p>
                     <p className={`text-xs ${red ? "font-semibold text-red-700" : "text-slate-600"}`}>
                       Activated {dmy(o.activation_date)} · valid till {dmy(o.service_until)}
@@ -171,13 +189,13 @@ export default function PlatformAdminPage() {
 
 /** Change a firm's details (the legal and display name, contact, referral and the service dates). */
 function EditFirm({ org, onClose, onSaved }: { org: Org | null; onClose: () => void; onSaved: (o: Org) => void }) {
-  const [v, setV] = useState({ legal: "", display: "", mobile: "", email: "", referral: "", activation: "", until: "" });
+  const [v, setV] = useState({ legal: "", display: "", mobile: "", email: "", referral: "", gstin: "", pan: "", activation: "", until: "" });
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!org) return;
     setErr(null);
-    setV({ legal: org.legal_name, display: org.display_name, mobile: org.contact_mobile ?? "", email: org.contact_email ?? "", referral: org.referral ?? "", activation: org.activation_date, until: org.service_until });
+    setV({ legal: org.legal_name, display: org.display_name, mobile: org.contact_mobile ?? "", email: org.contact_email ?? "", referral: org.referral ?? "", gstin: org.gstin ?? "", pan: org.pan ?? "", activation: org.activation_date, until: org.service_until });
   }, [org]);
   if (!org) return null;
   const set = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement>) => setV({ ...v, [k]: e.target.value });
@@ -187,10 +205,12 @@ function EditFirm({ org, onClose, onSaved }: { org: Org | null; onClose: () => v
     const m = v.mobile.trim() ? checkMobile(v.mobile) : null;
     if (m && !m.ok) return setErr(m.message);
     if (v.email.trim() && !EMAIL.test(v.email.trim())) return setErr("Enter a valid email address or leave it empty.");
+    const gp = taxProblem(v.gstin, v.pan);
+    if (gp) return setErr(gp);
     if (v.until <= v.activation) return setErr("The valid-till date must be after the activation date.");
     setBusy(true); setErr(null);
     const { data, error } = await supabase().rpc("platform_update_org", {
-      p_org: org.id, p_legal: v.legal, p_display: v.display, p_mobile: (m && m.ok ? m.value : "") as string, p_email: v.email, p_referral: v.referral,
+      p_org: org.id, p_legal: v.legal, p_display: v.display, p_mobile: (m && m.ok ? m.value : "") as string, p_email: v.email, p_referral: v.referral, p_gstin: taxValues(v.gstin, v.pan).gstin, p_pan: taxValues(v.gstin, v.pan).pan,
       p_activation: v.activation as unknown as string, p_until: v.until as unknown as string,
     });
     setBusy(false);
@@ -206,6 +226,10 @@ function EditFirm({ org, onClose, onSaved }: { org: Org | null; onClose: () => v
         <div className="grid gap-3 sm:grid-cols-2">
           <div><label className="label" htmlFor="e3">Mobile (optional)</label><input id="e3" className="field" inputMode="tel" maxLength={14} value={v.mobile} onChange={(e) => setV({ ...v, mobile: e.target.value.replace(/[^0-9+\s-]/g, "") })} /></div>
           <div><label className="label" htmlFor="e4">Email (optional)</label><input id="e4" type="email" className="field" autoCapitalize="none" value={v.email} onChange={set("email")} /></div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div><label className="label" htmlFor="e8">GSTIN</label><input id="e8" className={`field uppercase ${v.gstin && !checkGstin(v.gstin).ok ? "!border-red-500" : ""}`} maxLength={15} autoCapitalize="characters" value={v.gstin} onChange={(e) => setV({ ...v, gstin: e.target.value.replace(/\s/g, "").toUpperCase() })} /></div>
+          <div><label className="label" htmlFor="e9">PAN</label><input id="e9" className={`field uppercase ${v.pan && !checkPan(v.pan).ok ? "!border-red-500" : ""}`} maxLength={10} autoCapitalize="characters" value={v.pan} onChange={(e) => setV({ ...v, pan: e.target.value.replace(/\s/g, "").toUpperCase() })} /></div>
         </div>
         <div><label className="label" htmlFor="e5">Referral</label><input id="e5" className="field" maxLength={120} value={v.referral} onChange={set("referral")} /></div>
         <div className="grid gap-3 sm:grid-cols-2">
