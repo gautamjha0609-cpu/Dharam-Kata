@@ -38,12 +38,20 @@ export function ValuationDesktopBrand({ width = 240, fill = false, height, class
   );
 }
 
-/** Phone / portrait: logo + the fixed name. */
+/**
+ * Phone / portrait: the WHOLE logo, as on the brand artwork: the mark and the three-line name "The / Valuation / House" (Valuation in blue).
+ * Real text (sharp at every size), never truncated: the name is laid out at a size tied to the mark, so the pair always fits side by side.
+ */
 export function ValuationBrandCompact({ size = 36, className = "" }: { size?: number; className?: string }) {
+  const fs = Math.max(11, Math.round(size * 0.36));
   return (
-    <span className={`flex min-w-0 items-center gap-2 ${className}`}>
+    <span role="img" aria-label="The Valuation House" className={`flex items-center gap-1.5 ${className}`}>
       <ValuationMark height={size} />
-      <span className="truncate font-semibold leading-tight text-navy" style={{ fontSize: Math.max(14, Math.round(size * 0.45)) }}>The Valuation House</span>
+      <span aria-hidden className="flex shrink-0 flex-col whitespace-nowrap font-bold" style={{ fontSize: fs, lineHeight: 1.02 }}>
+        <span className="text-[#1c2a3a]">The</span>
+        <span className="text-[#1f5ea8]">Valuation</span>
+        <span className="text-[#1c2a3a]">House</span>
+      </span>
     </span>
   );
 }

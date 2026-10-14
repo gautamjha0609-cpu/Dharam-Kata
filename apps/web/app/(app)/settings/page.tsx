@@ -27,7 +27,7 @@ export default function SettingsPage() {
           <Link href="/settings/template" className="btn-navy">Open layout designer</Link>
         </section>
       )}
-      {can("print.route.manage") && <PrintingCard />}
+      {can("print.route.manage") ? <PrintingCard /> : can("agent.remove") && <PairedPcsCard />}
       <section className="card">
         <h2 className="font-bold text-navy">Users</h2>
         <p className="text-sm text-slate-600">Users, logins and passwords are created and managed only by the platform administrator (The Valuation House). Contact them to add an operator or change a password.</p>
@@ -175,9 +175,9 @@ function PrintingCard() {
     void load();
   }
   async function revoke(a: AgentRow) {
-    if (!org || !confirm(`Revoke "${a.label}"? It will stop receiving print jobs immediately.`)) return;
-    const { error } = await supabase().rpc("revoke_agent", { p_org: org.organization_id, p_agent: a.id });
-    setMsg(error ? { k: "error", t: friendlyError(error) } : { k: "ok", t: "Printer PC revoked." });
+    if (!org || !confirm(`Remove "${a.label}"? It stops printing immediately and must be paired again to print.`)) return;
+    const { error } = await supabase().rpc("remove_agent", { p_org: org.organization_id, p_agent: a.id });
+    setMsg(error ? { k: "error", t: friendlyError(error) } : { k: "ok", t: "Printer PC removed." });
     void load();
   }
 
@@ -198,7 +198,7 @@ function PrintingCard() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div><p className="font-semibold text-navy">{a.label} <span className="text-sm font-normal text-slate-600">· {sites.find((s) => s.id === a.site_id)?.name}</span></p>
               <p className="text-xs text-slate-600">v{a.app_version ?? "?"} · {a.os ?? ""} · last seen {a.last_heartbeat_at ? fmtDateTime(a.last_heartbeat_at) : "never"}</p></div>
-            {a.status === "active" ? <button className="btn-danger !min-h-[36px]" onClick={() => revoke(a)}>Revoke</button> : <span className="badge bg-slate-100 text-slate-600">– Revoked</span>}
+            {a.status === "active" ? <button className="btn-danger !min-h-[36px]" onClick={() => revoke(a)}>Remove</button> : <span className="badge bg-slate-100 text-slate-600">– Removed</span>}
           </div>
           {a.status === "active" && (
             <div className="mt-3 space-y-2">
@@ -208,6 +208,42 @@ function PrintingCard() {
               ))}
             </div>
           )}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+/** Operators: see the paired printer PCs and remove an old one (pairing a new PC is done by the owner / administrator). */
+function PairedPcsCard() {
+  const { org, sites } = useApp();
+  const [agents, setAgents] = useState<{ id: string; site_id: string; label: string; status: string; app_version: string | null; last_heartbeat_at: string | null }[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [msg, setMsg] = useState<{ k: "ok" | "error"; t: string } | null>(null);
+  const load = useCallback(async () => {
+    if (!org) return;
+    const { data } = await supabase().from("print_agents").select("id,site_id,label,status,app_version,last_heartbeat_at").eq("organization_id", org.organization_id).eq("status", "active").order("created_at", { ascending: false });
+    setAgents((data ?? []) as never); setLoaded(true);
+  }, [org]);
+  useEffect(() => { void load(); }, [load]);
+  async function remove(id: string, label: string) {
+    if (!org || !confirm(`Remove "${label}"? It stops printing immediately and must be paired again to print.`)) return;
+    const { error } = await supabase().rpc("remove_agent", { p_org: org.organization_id, p_agent: id });
+    setMsg(error ? { k: "error", t: friendlyError(error) } : { k: "ok", t: "Printer PC removed." });
+    void load();
+  }
+  return (
+    <section className="card space-y-3">
+      <h2 className="font-bold text-navy">Paired printer PCs</h2>
+      <p className="text-sm text-slate-600">Remove a PC that is old, replaced or no longer used. To pair a new PC, ask your owner or administrator.</p>
+      {msg && <Alert kind={msg.k}>{msg.t}</Alert>}
+      {!loaded && <div className="skeleton h-16 w-full" aria-busy="true" aria-label="Loading printer PCs" />}
+      {loaded && agents.length === 0 && <p className="text-sm text-slate-600">No printer PC is paired.</p>}
+      {agents.map((a) => (
+        <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-3">
+          <div className="min-w-0"><p className="break-words font-semibold text-navy">{a.label} <span className="text-sm font-normal text-slate-600">· {sites.find((s) => s.id === a.site_id)?.name}</span></p>
+            <p className="text-xs text-slate-600">v{a.app_version ?? "?"} · last seen {a.last_heartbeat_at ? fmtDateTime(a.last_heartbeat_at) : "never"}</p></div>
+          <button className="btn-danger !min-h-[40px]" onClick={() => remove(a.id, a.label)}>Remove</button>
         </div>
       ))}
     </section>

@@ -72,7 +72,7 @@ export default function InvoicesPage() {
             <li key={i.id}>
               <Link href={`/invoices/${i.id}`} className="card flex flex-wrap items-center justify-between gap-2 hover:border-brand">
                 <div>
-                  <p className="font-bold text-navy">{i.invoice_number} {i.status === "cancelled" && <span className="badge bg-red-100 text-red-800">✕ Cancelled</span>} {i.status !== "cancelled" && i.stage === "open" && <span className="badge bg-amber-100 text-amber-900">⏳ Open</span>}</p>
+                  <p className="font-bold text-navy">{i.invoice_number} {i.status === "cancelled" && <span className="badge bg-red-100 text-red-800">✕ Deleted</span>} {i.status !== "cancelled" && i.stage === "open" && <span className="badge bg-amber-100 text-amber-900">⏳ Open</span>}</p>
                   <p className="text-sm text-slate-600">{i.vehicle_display} · {i.party_name || "Walk-in"}</p>
                   <p className="text-xs text-slate-600">{fmtDateTime(i.issued_at)} · {i.stage === "open" ? `first weight ${num(i.gross_weight_kg)} kg` : `${num(i.net_weight_kg ?? 0)} kg net`}</p>
                 </div>

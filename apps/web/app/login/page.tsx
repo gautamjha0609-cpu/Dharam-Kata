@@ -45,7 +45,7 @@ export default function LoginPage() {
       <div className="mb-3 flex justify-center">
         {/* the animation never taller than ~27% of the screen, so the whole page fits without scrolling */}
         <ValuationDesktopBrand width="100%" height="min(190px, 30dvh)" className="hidden md:block" />
-        <ValuationBrandCompact size={52} className="md:hidden" />
+        <ValuationBrandCompact size={64} className="md:hidden" />
       </div>
       <form onSubmit={submit} className="card space-y-3 !p-4" aria-label="Sign in">
         <div>

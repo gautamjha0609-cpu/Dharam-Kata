@@ -7,6 +7,7 @@ import { friendlyError } from "@/lib/errors";
 import { fmtDateTime, inr, num } from "@/lib/format";
 import { Alert, Modal, PageHead, PrintBadge, PRINT_ERRORS } from "@/components/ui";
 import type { Invoice, PrintJob } from "@/lib/types";
+import { DeleteEntryButton } from "@/components/delete-entry";
 
 interface Payment { id: string; kind: string; amount: string; method: string; reference: string | null; reason: string | null; occurred_at: string }
 
@@ -64,7 +65,7 @@ export default function InvoiceDetail({ params }: { params: Promise<{ id: string
     <div className="mx-auto max-w-2xl">
       <PageHead title={`Invoice ${inv.invoice_number}`} sub={`${fmtDateTime(inv.issued_at)} · ${inv.stage === "open" ? "Open — waiting for the second weight" : "Closed"}`}
         actions={<Link href="/invoices" className="btn-ghost">← Back</Link>} />
-      {cancelled && <div className="mb-3"><Alert>Cancelled: {inv.cancel_reason}. This number is retired and will not be reused.</Alert></div>}
+      {cancelled && <div className="mb-3"><Alert>Deleted: {inv.cancel_reason}. This number is retired and will not be reused.</Alert></div>}
       {err && <div className="mb-3"><Alert>{err}</Alert></div>}
       <div className="card space-y-3">
         <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -112,7 +113,7 @@ export default function InvoiceDetail({ params }: { params: Promise<{ id: string
         </>
       )}
 
-      {!cancelled && can("invoice.cancel") && <div className="mt-5"><button className="btn-danger" onClick={() => setDlg("cancel")}>Cancel invoice…</button></div>}
+      {!cancelled && <div className="mt-5"><DeleteEntryButton invoiceId={inv.id} label={`entry ${inv.invoice_number} (${inv.vehicle_display})`} onDone={() => void load()} /></div>}
 
       <Modal open={!!dlg} onClose={() => setDlg(null)} title={dlg === "cancel" ? "Cancel invoice" : "Reprint invoice"}>
         <div className="space-y-3">

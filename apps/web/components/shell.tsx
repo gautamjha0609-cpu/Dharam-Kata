@@ -23,7 +23,7 @@ const NAV: NavItem[] = [
   { href: "/collections", label: "Collections", icon: "₹", show: (c) => c("payment.record") },
   { href: "/parties", label: "Debtors", icon: "◉", show: (c) => c("party.read") || c("party.manage") },
   { href: "/print", label: "Print centre", icon: "⎙", show: (c) => c("print.view") },
-  { href: "/settings", label: "Settings", icon: "⚙", show: (c) => c("pricing.manage") || c("series.manage") || c("print.route.manage") || c("template.manage") || c("ticket.image") },
+  { href: "/settings", label: "Settings", icon: "⚙", show: (c) => c("pricing.manage") || c("series.manage") || c("print.route.manage") || c("agent.remove") || c("template.manage") || c("ticket.image") },
   { href: ADMIN_PATH, label: "Platform admin", icon: "★", show: (_c, p) => p },
 ];
 
@@ -132,7 +132,7 @@ export function Shell({ children }: { children: ReactNode }) {
                 aria-label={collapsed ? "Open the side menu" : "Close the side menu"} aria-expanded={!collapsed} title={collapsed ? "Open the side menu" : "Close the side menu"}>
                 <svg aria-hidden width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M3 5h14M3 10h14M3 15h14" /></svg>
               </button>
-              <ValuationBrandCompact size={34} className="min-w-0 flex-1 md:hidden" />
+              <ValuationBrandCompact size={36} className="shrink-0 md:hidden" /><span className="flex-1 md:hidden" />
               <div className={`min-w-0 md:flex-1 ${me.memberships.length > 1 ? "" : "max-md:hidden"}`}>
                 {me.memberships.length > 1 ? (
                   <Select aria-label="Organisation" className="field !min-h-[36px] max-w-xs" value={org?.organization_id} onChange={(e) => selectOrg(e.target.value)}>

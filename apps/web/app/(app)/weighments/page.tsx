@@ -8,6 +8,7 @@ import { fmtDateTime, inr, num } from "@/lib/format";
 import { Alert, Empty, PageHead } from "@/components/ui";
 import { useLive } from "@/lib/use-live";
 import type { Invoice } from "@/lib/types";
+import { DeleteEntryButton } from "@/components/delete-entry";
 
 /** Open entries: vehicles weighed once whose second weighing (closing) has not happened yet. */
 export default function OpenEntriesPage() {
@@ -59,9 +60,10 @@ export default function OpenEntriesPage() {
                 <div><dt className="text-slate-600">Amount entered</dt><dd>{inr(r.fee_total)}</dd></div>
                 {r.party_name && <div><dt className="text-slate-600">Party</dt><dd>{r.party_name}</dd></div>}
               </dl>
-              {can("weighment.complete") && (
-                <div className="mt-3"><Link className="btn-navy" href={`/weighments/new?vehicle=${encodeURIComponent(r.vehicle_display)}`}>Close this entry</Link></div>
-              )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                {can("weighment.complete") && <Link className="btn-navy" href={`/weighments/new?vehicle=${encodeURIComponent(r.vehicle_display)}`}>Close this entry</Link>}
+                <DeleteEntryButton invoiceId={r.id} label={`entry ${r.invoice_number} (${r.vehicle_display})`} onDone={() => void load()} className="btn-ghost !text-red-700" />
+              </div>
             </li>
           ))}
         </ul>
