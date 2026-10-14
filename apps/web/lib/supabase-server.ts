@@ -17,3 +17,12 @@ export async function userClient() {
     cookies: { getAll: () => store.getAll(), setAll: () => {} },
   });
 }
+
+/** Like userClient(), but allowed to SET the session cookies (used only by the sign-in / sign-out routes). */
+export async function authClient() {
+  const store = await cookies();
+  return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
+    cookieOptions: { maxAge: 60 * 60 * 24 * 365, sameSite: "lax", path: "/" },
+    cookies: { getAll: () => store.getAll(), setAll: (list) => list.forEach(({ name, value, options }) => store.set(name, value, options)) },
+  });
+}

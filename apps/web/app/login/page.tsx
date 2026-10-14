@@ -1,13 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { loginIdToEmail } from "@/lib/login-id";
 import { Alert } from "@/components/ui";
 import { InstallApp } from "@/components/install-app";
 import { ValuationBrandCompact, ValuationDesktopBrand } from "@/components/valuation-brand";
 
-/** The database client is the biggest script; it is fetched when the person starts typing, not before the page is shown. */
-const loadClient = () => import("@/lib/supabase");
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,11 +19,19 @@ export default function LoginPage() {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const { supabase } = await loadClient();
-    const { error } = await supabase().auth.signInWithPassword({ email: loginIdToEmail(loginId), password });
-    if (error) {
-      // Same message for unknown user / wrong password: no account enumeration.
-      setError(/rate|too many/i.test(error.message) ? "Too many attempts. Please wait a minute and try again." : "Login ID or password is incorrect.");
+    const pw = password;
+    setPassword(""); // the password does not stay in the page's memory a moment longer than needed
+    try {
+      // the server signs in; this browser never calls the auth service itself, so nothing about the password shows in its console or network list
+      const res = await fetch("/api/v1/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ login_id: loginId.trim(), password: pw }), cache: "no-store" });
+      const j = (await res.json().catch(() => null)) as { data?: { signed_in?: boolean; message?: string } | null; error?: { message?: string } | null } | null;
+      if (!res.ok || !j?.data?.signed_in) {
+        setError(j?.error?.message ?? j?.data?.message ?? "Login ID or password is incorrect.");
+        setBusy(false);
+        return;
+      }
+    } catch {
+      setError("Cannot reach the server. Check your connection and try again.");
       setBusy(false);
       return;
     }
@@ -50,7 +55,7 @@ export default function LoginPage() {
         {error && <Alert>{error}</Alert>}
         <div>
           <label className="label" htmlFor="loginId">Login ID</label>
-          <input id="loginId" onFocus={() => void loadClient()} className="field" autoCapitalize="none" autoCorrect="off" autoComplete="username" required value={loginId} onChange={(e) => setLoginId(e.target.value)} />
+          <input id="loginId" className="field" autoCapitalize="none" autoCorrect="off" autoComplete="username" required value={loginId} onChange={(e) => setLoginId(e.target.value)} />
         </div>
         <div>
           <label className="label" htmlFor="password">Password</label>

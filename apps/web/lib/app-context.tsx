@@ -9,6 +9,8 @@ export interface Membership {
   role: "owner" | "admin" | "operator" | "accounts" | "remote_site";
   permissions: string[];
   site_ids: string[];
+  /** the day the annual service ends (YYYY-MM-DD); it stops on this date until the platform admin extends it */
+  service_until?: string | null;
 }
 export interface Me {
   user_id: string;

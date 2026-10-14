@@ -8,6 +8,9 @@ import { supabase } from "@/lib/supabase";
 import { ShellUi } from "@/lib/shell-ui";
 import { InstallApp } from "@/components/install-app";
 import { UpdateBar } from "@/components/update-bar";
+import { NoticeHost } from "@/components/notice-host";
+import { ADMIN_PATH } from "@/lib/admin-path";
+import { termState } from "@dk/domain";
 import { ValuationBrandCompact, ValuationDesktopBrand, ValuationMark } from "@/components/valuation-brand";
 
 interface NavItem { href: string; label: string; icon: string; show: (can: (p: string) => boolean, platform: boolean) => boolean; primary?: boolean }
@@ -21,7 +24,7 @@ const NAV: NavItem[] = [
   { href: "/parties", label: "Debtors", icon: "◉", show: (c) => c("party.read") || c("party.manage") },
   { href: "/print", label: "Print centre", icon: "⎙", show: (c) => c("print.view") },
   { href: "/settings", label: "Settings", icon: "⚙", show: (c) => c("pricing.manage") || c("series.manage") || c("print.route.manage") || c("template.manage") || c("ticket.image") },
-  { href: "/admin", label: "Platform admin", icon: "★", show: (_c, p) => p },
+  { href: ADMIN_PATH, label: "Platform admin", icon: "★", show: (_c, p) => p },
 ];
 
 /** Pages that use the whole screen (the receipt layout editor) hide the header and bottom bar; the menu opens as a drawer. */
@@ -63,7 +66,7 @@ export function Shell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", h);
   }, [drawer]);
   useEffect(() => {
-    if (!org && me.is_platform_admin && !path.startsWith("/admin")) router.replace("/admin");
+    if (!org && me.is_platform_admin && !path.startsWith(ADMIN_PATH)) router.replace(ADMIN_PATH);
   }, [org, me.is_platform_admin, path, router]);
 
   function toggleSidebar() {
@@ -73,12 +76,14 @@ export function Shell({ children }: { children: ReactNode }) {
     });
   }
   async function signOut() {
-    await supabase().auth.signOut();
+    await fetch("/api/v1/auth/logout", { method: "POST" }).catch(() => {});
+    try { await supabase().auth.signOut({ scope: "local" }); } catch { /* ignore */ }
     router.replace("/login");
   }
   const ui = useMemo(() => ({ openMenu: () => setDrawer(true), immersive }), [immersive]);
 
-  const suspended = org && !["trial", "active", "grace"].includes(org.status);
+  const expired = !!org && termState(org.service_until).kind === "expired";
+  const suspended = !!org && !["trial", "active", "grace"].includes(org.status);
 
   const nav = (compact: boolean) => (
     <nav className="nav-scroll flex-1 space-y-1 overflow-y-auto p-3" aria-label="Main">
@@ -94,6 +99,7 @@ export function Shell({ children }: { children: ReactNode }) {
   return (
     <ShellUi.Provider value={ui}>
       <UpdateBar />
+      <NoticeHost />
       <div className={`${immersive ? "h-[100dvh] overflow-hidden" : "min-h-screen"} md:flex`}>
         {/* desktop sidebar: open, or a slim icon rail when collapsed (not on full-screen pages) */}
         {!immersive && (
@@ -152,7 +158,8 @@ export function Shell({ children }: { children: ReactNode }) {
           )}
 
           {!online && <div role="alert" className="bg-amber-100 px-4 py-2 text-sm font-medium text-amber-900">You are offline. Nothing can be saved or invoiced until you reconnect.</div>}
-          {suspended && <div role="alert" className="bg-red-100 px-4 py-2 text-sm font-medium text-red-800">This organisation is {org.status}. Records are read-only. Contact your administrator.</div>}
+          {suspended && <div role="alert" className="bg-red-100 px-4 py-2 text-sm font-medium text-red-800">This organisation is {org!.status}. Records are read-only. Contact your administrator.</div>}
+          {!suspended && expired && <div role="alert" className="bg-red-100 px-4 py-2 text-sm font-medium text-red-800">Your annual maintenance has ended, so your ID is suspended. Records are read-only until it is renewed. Please contact The Valuation House.</div>}
 
           {immersive ? (
             <main className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto lg:overflow-hidden">{children}</main>

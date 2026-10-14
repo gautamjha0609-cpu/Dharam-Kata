@@ -47,3 +47,6 @@ input, select, textarea { font-size: 16px; }
 .nav-scroll::-webkit-scrollbar-track { background: transparent; }
 .nav-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
 .nav-scroll:hover::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.28); }
+
+/* notice card: the thin bar at the bottom empties while the message is on screen (10 s) */
+@keyframes dk-notice { from { width: 100%; } to { width: 0; } }
