@@ -1,7 +1,7 @@
 {
   "name": "dharam-kata-print-agent",
   "productName": "Dharam Kata Print Agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Silent invoice printing agent for Dharam Kata (Windows)",
   "private": true,
   "main": "dist/main.js",
@@ -13,6 +13,7 @@
     "test": "vitest run",
     "lint": "echo ok",
     "dist": "pnpm build && electron-builder --win nsis --x64 --ia32 --arm64 --publish never",
+    "publish:exe": "node scripts/publish-exe.mjs",
     "dist:x64": "pnpm build && electron-builder --win nsis --x64 --publish never"
   },
   "devDependencies": {
