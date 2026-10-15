@@ -10,6 +10,7 @@ import { formatInvoiceNumber } from "@dk/domain";
 import { Alert, PageHead } from "@/components/ui";
 import { TicketPreview, previewValues, useReceipt } from "@/components/receipt";
 import { PrinterModelPicker } from "@/components/printer-model";
+import { AgentRequests } from "@/components/agent-requests";
 import { environmentFor, getModel, isPdfPrinter, isVirtualPrinter, matchPrinterModel } from "@dk/print-template";
 
 export default function SettingsPage() {
@@ -119,7 +120,7 @@ function SeriesCard() {
   );
 }
 
-interface AgentRow { id: string; site_id: string; label: string; status: string; app_version: string | null; os: string | null; printers_seen: { name: string; status?: string }[] | null; last_heartbeat_at: string | null }
+interface AgentRow { id: string; site_id: string; label: string; status: string; approval?: string; app_version: string | null; os: string | null; printers_seen: { name: string; status?: string }[] | null; last_heartbeat_at: string | null }
 interface PrinterRow { id: string; agent_id: string; label: string; os_printer_name: string; paper_w_mm: string; paper_h_mm: string; offset_x_mm: string; offset_y_mm: string; active: boolean; model_key: string | null }
 
 function PrintingCard() {
@@ -137,7 +138,7 @@ function PrintingCard() {
     if (!org) return;
     const sb = supabase();
     const [a, p] = await Promise.all([
-      sb.from("print_agents").select("id,site_id,label,status,app_version,os,printers_seen,last_heartbeat_at").eq("organization_id", org.organization_id),
+      sb.from("print_agents").select("id,site_id,label,status,approval,app_version,os,printers_seen,last_heartbeat_at").eq("organization_id", org.organization_id),
       sb.from("printer_devices").select("*").eq("organization_id", org.organization_id),
     ]);
     setAgents((a.data ?? []) as unknown as AgentRow[]); setPrinters((p.data ?? []) as PrinterRow[]);
@@ -191,6 +192,8 @@ function PrintingCard() {
         <button className="btn-navy" onClick={pair}>Generate pairing code</button>
       </div>
       {code && <Alert kind="info">Enter this code in the Print Agent within 10 minutes (single use): <b className="select-all text-xl tracking-widest">{code.code}</b></Alert>}
+      <p className="text-xs text-slate-600">One PC prints per site. If a site already has a PC, the new PC waits here for your approval (the old PC is then removed). Pairing the same PC again simply replaces its old entry.</p>
+      <AgentRequests onChange={() => void load()} />
 
       {!loaded && <div className="skeleton h-20 w-full" aria-busy="true" aria-label="Loading printers" />}
       {agents.map((a) => (
@@ -198,9 +201,10 @@ function PrintingCard() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div><p className="font-semibold text-navy">{a.label} <span className="text-sm font-normal text-slate-600">· {sites.find((s) => s.id === a.site_id)?.name}</span></p>
               <p className="text-xs text-slate-600">v{a.app_version ?? "?"} · {a.os ?? ""} · last seen {a.last_heartbeat_at ? fmtDateTime(a.last_heartbeat_at) : "never"}</p></div>
+            {a.status === "active" && a.approval === "pending" && <span className="badge bg-amber-100 text-amber-900">⏳ Waiting for approval</span>}
             {a.status === "active" ? <button className="btn-danger !min-h-[36px]" onClick={() => revoke(a)}>Remove</button> : <span className="badge bg-slate-100 text-slate-600">– Removed</span>}
           </div>
-          {a.status === "active" && (
+          {a.status === "active" && a.approval !== "pending" && (
             <div className="mt-3 space-y-2">
               {printers.filter((p) => p.agent_id === a.id).map((p) => <PrinterEditor key={p.id} p={p} onSave={calibrate} onModel={async (k) => { const r = await applyModel(p.id, k); setMsg(r?.error ? { k: "error", t: friendlyError(r.error) } : { k: "ok", t: "Environment saved for this printer." }); void load(); }} status={(a.printers_seen ?? []).find((s) => s.name === p.os_printer_name)?.status} />)}
               {(a.printers_seen ?? []).filter((s) => !isVirtualPrinter(s.name) && !printers.some((p) => p.agent_id === a.id && p.os_printer_name === s.name)).map((s) => {

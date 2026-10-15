@@ -63,6 +63,11 @@ export class AgentCore {
     private readonly log: (m: string) => void = () => {},
     private readonly backup?: BackupSink,
     private readonly now: () => Date = () => new Date(),
+    /**
+     * The one printer this PC was approved for (null = not chosen yet, agents paired before 0.1.5). `refresh` asks the server again,
+     * e.g. right after an owner approved a printer change. A job for any other printer is refused: never print elsewhere.
+     */
+    private readonly selectedPrinter?: (refresh: boolean) => Promise<string | null>,
   ) {}
 
   private lastFailCode = "";
@@ -147,6 +152,11 @@ export class AgentCore {
       return this.fail(job, "invalid_template");
     }
     if (!job.printer?.os_name) return this.fail(job, "no_printer");
+    if (this.selectedPrinter) {
+      let mine = await this.selectedPrinter(false);
+      if (mine && mine !== job.printer.os_name) mine = await this.selectedPrinter(true);
+      if (mine && mine !== job.printer.os_name) return this.fail(job, "printer_not_selected");
+    }
     const values = sanitizeValues(job.payload ?? {});
     if (Object.keys(values).length === 0 && job.job_type !== "test") return this.fail(job, "invalid_payload");
 

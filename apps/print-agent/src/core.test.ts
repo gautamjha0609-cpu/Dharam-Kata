@@ -13,7 +13,7 @@ const baseJob = (over: Partial<ClaimedJob> = {}): ClaimedJob => ({
   ...over,
 });
 
-function harness(opts: { job?: ClaimedJob | null; installed?: string[]; printOk?: boolean; eventFailsFor?: EventStatus[]; rejectEvents?: boolean; preflight?: string | null } = {}) {
+function harness(opts: { job?: ClaimedJob | null; installed?: string[]; printOk?: boolean; eventFailsFor?: EventStatus[]; rejectEvents?: boolean; preflight?: string | null; selected?: (refresh: boolean) => Promise<string | null> } = {}) {
   const events: { status: EventStatus; code?: string }[] = [];
   const printed: { html: string; deviceName: string; w: number; h: number; copies: number; fileName?: string }[] = [];
   let pending: PendingAck[] = [];
@@ -42,7 +42,7 @@ function harness(opts: { job?: ClaimedJob | null; installed?: string[]; printOk?
     submitted: (id) => submitted.has(id),
     markSubmitted: (id) => { submitted.add(id); },
   };
-  return { core: new AgentCore(api, printer, journal), events, printed, journal, submitted, setFail: (s: EventStatus) => failFor.delete(s) };
+  return { core: new AgentCore(api, printer, journal, () => {}, undefined, () => new Date(), opts.selected), events, printed, journal, submitted, setFail: (s: EventStatus) => failFor.delete(s) };
 }
 
 describe("AgentCore", () => {
@@ -164,5 +164,33 @@ describe("PDF printers", () => {
 describe("sanitizeValues", () => {
   it("keeps strings, drops internals/non-strings/control chars", () => {
     expect(sanitizeValues({ serial: "A1", _calibration: { x: 1 }, n: 5 as unknown as string, bad: "a\u0007b", ok: "नमस्ते" })).toEqual({ serial: "A1", ok: "नमस्ते" });
+  });
+
+  it("prints only to the printer this PC was approved for", async () => {
+    const h = harness({ selected: async () => "Canon MF3010", installed: ["EPSON LQ-310", "Canon MF3010"] });
+    expect(await h.core.tick()).toBe("failed");
+    expect(h.printed).toHaveLength(0);
+    expect(h.events.at(-1)).toEqual({ status: "failed", code: "printer_not_selected" });
+  });
+
+  it("asks the server again before refusing (a printer change was just approved)", async () => {
+    let approved = "Canon MF3010";
+    const asked: boolean[] = [];
+    const h = harness({ selected: async (refresh) => { asked.push(refresh); if (refresh) approved = "EPSON LQ-310"; return approved; } });
+    expect(await h.core.tick()).toBe("printed");
+    expect(asked).toEqual([false, true]);
+    expect(h.printed[0]!.deviceName).toBe("EPSON LQ-310");
+  });
+
+  it("a PC paired before 0.1.5 (no printer chosen) keeps printing as before", async () => {
+    const h = harness({ selected: async () => null });
+    expect(await h.core.tick()).toBe("printed");
+  });
+
+  it("a renamed printer (Canon MF3010 -> Canon MF3010 (Copy 1)) is never replaced by another one", async () => {
+    const h = harness({ selected: async () => "Canon MF3010", installed: ["Canon MF3010 (Copy 1)", "EPSON LQ-310"], job: baseJob({ printer: { os_name: "Canon MF3010", paper_w_mm: 170, paper_h_mm: 95, offset_x_mm: 0, offset_y_mm: 0 } }) });
+    expect(await h.core.tick()).toBe("failed");
+    expect(h.printed).toHaveLength(0);
+    expect(h.events.at(-1)).toEqual({ status: "failed", code: "printer_missing" });
   });
 });

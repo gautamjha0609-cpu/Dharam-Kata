@@ -1,11 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, session, shell, Tray } from "electron";
 import { hostname, release } from "node:os";
 import { join } from "node:path";
-import { renderCalibrationHtml, renderHtml, ticketPreset } from "@dk/print-template";
+import { isPdfPrinter, isVirtualPrinter, renderCalibrationHtml, renderHtml, ticketPreset } from "@dk/print-template";
 import { AgentCore } from "./core";
 import { DailyBackup } from "./backup";
 import { ElectronPrinter } from "./electron-printer";
-import { HttpApi, HttpError, pair } from "./http-api";
+import { HttpApi, HttpError, pair, type AgentState } from "./http-api";
+import { machineId, newSeed } from "./machine-id";
 import { logFilePath, logLine } from "./logger";
 import { FileJournal, clearToken, loadConfig, loadToken, saveConfig, saveToken } from "./store";
 
@@ -52,12 +53,37 @@ const note = (m: string) => {
 process.on("uncaughtException", (e) => { logLine(`uncaughtException: ${e?.stack ?? e}`); });
 process.on("unhandledRejection", (e) => { logLine(`unhandledRejection: ${e instanceof Error ? e.stack : String(e)}`); });
 
+let machine: Promise<string> | null = null;
+/** Stable id of this PC (hash), computed once. */
+function thisMachine(): Promise<string> {
+  machine ??= machineId(() => {
+    const cfg = loadConfig(DEFAULT_SERVER);
+    if (cfg.machineSeed) return cfg.machineSeed;
+    const seed = newSeed();
+    saveConfig({ ...cfg, machineSeed: seed });
+    return seed;
+  });
+  return machine;
+}
+
+/** Saves what the server says about this PC: approval and THE printer it may print on. */
+function applyState(st: AgentState | null | undefined) {
+  if (!st) return;
+  const cfg = loadConfig(DEFAULT_SERVER);
+  if (cfg.approval !== st.approval || (cfg.printer ?? null) !== st.printer) note(st.approval === "pending" ? "Waiting for approval on the website" : `Printer for this PC: ${st.printer ?? "not chosen"}`);
+  saveConfig({ ...cfg, approval: st.approval, printer: st.printer, request: st.request ? { kind: st.request.kind, printer: st.request.printer } : null });
+}
+
 function setupAgent() {
   const cfg = loadConfig(DEFAULT_SERVER);
   const token = loadToken();
   if (!cfg.agentId || !token) { core = null; api = null; return; }
   api = new HttpApi(cfg.serverUrl, token);
-  core = new AgentCore(api, printer, journal, note, backup);
+  // jobs only ever go to the printer approved for this PC; a mismatch first asks the server again (a change may just have been approved)
+  core = new AgentCore(api, printer, journal, note, backup, () => new Date(), async (refresh) => {
+    if (refresh) await heartbeat();
+    return loadConfig(DEFAULT_SERVER).printer ?? null;
+  });
 }
 
 const describe = (e: unknown) => (e instanceof Error ? e.message : "Unknown error");
@@ -72,11 +98,17 @@ function refreshTray() {
 }
 
 async function heartbeat() {
-  if (!api) return;
+  if (!api) {
+    // not paired yet: keep the printer list fresh for the first-run printer choice
+    try { state.printers = await printer.list(); } catch { /* ignore */ }
+    win?.webContents.send("state-changed");
+    return;
+  }
   try {
     const withStatus = await printer.listWithStatus();
     state.printers = withStatus.map((p) => p.name);
-    await api.heartbeat(app.getVersion(), `Windows ${release()}`, withStatus);
+    const r = await api.heartbeat(app.getVersion(), `Windows ${release()}`, withStatus, await thisMachine());
+    applyState(r?.state);
     state.connected = true; state.lastError = "";
   } catch (e) {
     state.connected = false;
@@ -203,18 +235,33 @@ const backupSummary = () => {
 ipcMain.handle("state", () => {
   const cfg = loadConfig(DEFAULT_SERVER);
   const bs = backupSummary();
-  return { paired: !!(cfg.agentId && loadToken()), label: cfg.label, server: cfg.serverUrl, version: app.getVersion(), host: hostname(), ...state, log: [...log].reverse(), backup: { root: backup.getRoot(), days: bs.days, latest: bs.latest ?? null } };
+  const selected = cfg.printer ?? null;
+  return {
+    paired: !!(cfg.agentId && loadToken()), label: cfg.label, server: cfg.serverUrl, version: app.getVersion(), host: hostname(), ...state, log: [...log].reverse(),
+    backup: { root: backup.getRoot(), days: bs.days, latest: bs.latest ?? null },
+    // printers that can really print (OneNote, Fax, XPS, Print to file are left out); PDF printers are marked
+    choices: state.printers.filter((p) => !isVirtualPrinter(p)).map((p) => ({ name: p, pdf: isPdfPrinter(p) })),
+    approval: cfg.approval ?? "approved", printer: selected, request: cfg.request ?? null,
+    printerMissing: !!selected && state.printers.length > 0 && !state.printers.includes(selected),
+    printerVirtual: !!selected && isVirtualPrinter(selected),
+  };
 });
 
-ipcMain.handle("pair", async (_e, code: string, label: string) => {
+ipcMain.handle("pair", async (_e, code: string, label: string, printerName: string) => {
   try {
     const cfg = loadConfig(DEFAULT_SERVER);
-    const r = await pair(cfg.serverUrl, String(code).trim(), String(label).trim() || hostname(), `Windows ${release()}`);
+    const chosen = String(printerName ?? "");
+    const installed = await printer.list();
+    if (!chosen || !installed.includes(chosen) || isVirtualPrinter(chosen)) return { ok: false, error: "Choose the printer this PC prints slips on." };
+    const r = await pair(cfg.serverUrl, String(code).trim(), String(label).trim() || hostname(), `Windows ${release()}`, await thisMachine(), chosen);
     saveToken(r.token);
-    saveConfig({ ...cfg, agentId: r.agent_id, label: String(label).trim() || hostname() });
+    // a website without the approval feature yet sends no "approval": then nothing is locked locally and printing works as in 0.1.4
+    const approval = r.approval ?? "approved";
+    saveConfig({ ...cfg, agentId: r.agent_id, label: String(label).trim() || hostname(), approval, printer: r.approval === "approved" ? chosen : null,
+      request: approval === "pending" ? { kind: "takeover", printer: chosen } : null });
     setupAgent();
     await heartbeat();
-    note("Paired with the server");
+    note(approval === "pending" ? "Paired. Waiting for approval on the website (another PC prints for this site now)." : `Paired with the server. Printer: ${chosen}`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof HttpError ? e.message : "Could not reach the server. Check the internet connection." };
@@ -235,9 +282,25 @@ ipcMain.handle("backup-open", async () => { await shell.openPath(backup.getRoot(
 ipcMain.handle("website-open", () => { openWebsite(); return { ok: true }; });
 ipcMain.handle("log-open", () => { shell.showItemInFolder(logFilePath()); return { ok: true }; });
 
+/** "Change printer" / "choose it again": a request; the current printer keeps printing until it is approved on the website. */
+ipcMain.handle("request-printer", async (_e, printerName: string) => {
+  if (!api) return { ok: false, error: "This PC is not paired." };
+  const chosen = String(printerName ?? "");
+  const installed = await printer.list();
+  if (!installed.includes(chosen) || isVirtualPrinter(chosen)) return { ok: false, error: "That printer is not installed on this PC." };
+  try {
+    const r = await api.requestPrinter(chosen);
+    applyState(r?.state);
+    note(`Asked to use ${chosen}. An owner or administrator must approve it on the website.`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: friendly(e) };
+  }
+});
+
 ipcMain.handle("unpair", () => {
   clearToken();
-  saveConfig({ ...loadConfig(DEFAULT_SERVER), agentId: null });
+  saveConfig({ ...loadConfig(DEFAULT_SERVER), agentId: null, printer: null, approval: undefined, request: null });
   setupAgent();
   state.connected = false;
   refreshTray();

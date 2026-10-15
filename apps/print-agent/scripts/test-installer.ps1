@@ -50,6 +50,14 @@ function Uninstall-Old {
   Remove-ItemProperty $runKey -Name $oldName -ErrorAction SilentlyContinue
   Get-ChildItem $unKey -ErrorAction SilentlyContinue | Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -in @($oldName, "$oldName $OldVersion") } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 }
+# "deleted by hand": Windows can keep a just-closed program's files locked for a few seconds (helper processes, antivirus scan), so retry
+function Remove-Hard($path) {
+  for ($i = 0; $i -lt 20; $i++) {
+    Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    try { Remove-Item $path -Recurse -Force -ErrorAction Stop; return } catch { if (-not (Test-Path $path)) { return }; Start-Sleep -Milliseconds 750 }
+  }
+  Remove-Item $path -Recurse -Force   # still locked after 15 s: let the error stop the test
+}
 function Make-Lnk($path, $target) { $s = $sh.CreateShortcut($path); $s.TargetPath = $target; $s.Save() }
 function Add-Result($label, $problems) {
   $ok = $problems.Count -eq 0
@@ -85,7 +93,7 @@ Start-Process $exe; Start-Sleep 5
 Check "3  install while this version is running" (Install $Installer)
 Uninstall-Clean
 Check "4  uninstall, then install again" (Install $Installer)
-Stop-Agent; Remove-Item $dir -Recurse -Force
+Stop-Agent; Remove-Hard $dir
 Check "5  install folder deleted by hand, then install" (Install $Installer)
 Stop-Agent; Get-ChildItem $dir -Filter "Uninstall*.exe" | Remove-Item -Force
 Check "6  its own uninstaller missing" (Install $Installer)
@@ -100,9 +108,9 @@ Stop-Agent
 Make-Lnk "$desktop\$name.lnk" "C:\Gone\Old\$name.exe"; Make-Lnk "$startMenu\$name.lnk" "C:\Gone\Old\$name.exe"
 Set-ItemProperty $runKey -Name $name -Value "`"C:\Gone\Old\$name.exe`" --hidden"
 Check "8  stale shortcuts and stale start-up entry of this version" (Install $Installer)
-Stop-Agent; Remove-Item $exe -Force
+Stop-Agent; Remove-Hard $exe
 Check "9  program file deleted, folder still there" (Install $Installer)
-Stop-Agent; Remove-Item $dir -Recurse -Force; Get-ChildItem $unKey | Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -like "$name*" } | Remove-Item -Recurse -Force
+Stop-Agent; Remove-Hard $dir; Get-ChildItem $unKey | Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -like "$name*" } | Remove-Item -Recurse -Force
 Check "10 folder and uninstall entry gone, shortcuts left" (Install $Installer)
 Start-Process $exe; Start-Sleep 5
 Check "11 running, install again" (Install $Installer)
@@ -138,10 +146,34 @@ if ($OldInstaller -and (Test-Path $OldInstaller)) {
     Start-Process $oldExe; Start-Sleep 6
     if (-not (Get-Process -Name $oldName -ErrorAction SilentlyContinue)) { $pOld += "the older version did not start for the test" }
     else {
+      # the older version is paired: its pairing (config.json + encrypted device.bin) must survive the update, so no pairing again.
+      # A real pairing of this PC (developer machine) is put aside first and restored at the end.
+      $cfgFile = Join-Path $data "config.json"; $devFile = Join-Path $data "device.bin"
+      $aside = Join-Path $env:TEMP "dk-agent-test-aside"; Remove-Item $aside -Recurse -Force -ErrorAction SilentlyContinue; New-Item $aside -ItemType Directory -Force | Out-Null
+      foreach ($f in @($cfgFile, $devFile)) { if (Test-Path $f) { Copy-Item $f $aside -Force } }
+      $oldCfg = '{"serverUrl":"https://dharam-kata.vercel.app","agentId":"00000000-0000-4000-8000-0000000000aa","label":"MATRIX-TEST-PC","backupDir":""}'
+      New-Item $data -ItemType Directory -Force | Out-Null
+      Set-Content $cfgFile $oldCfg -Encoding ascii -NoNewline; [IO.File]::WriteAllBytes($devFile, [byte[]](1..64))
       # install the new version while the old one is open and in use: it must be closed and removed, the new one must work
       $sw = [Diagnostics.Stopwatch]::StartNew()
       Check "16 new version installs while an OLDER version is installed and running" (Install $Installer)
       $secs = [int]$sw.Elapsed.TotalSeconds
+      $p19 = @()
+      if (-not (Test-Path $devFile) -or (Get-Item $devFile).Length -ne 64) { $p19 += "the pairing credential (device.bin) was lost" }
+      $kept = $null; try { $kept = Get-Content $cfgFile -Raw | ConvertFrom-Json } catch { }
+      if (-not $kept -or $kept.agentId -ne "00000000-0000-4000-8000-0000000000aa" -or $kept.label -ne "MATRIX-TEST-PC") { $p19 += "the pairing settings (config.json) were lost or changed" }
+      Add-Result "19 update keeps the older version's pairing (no pairing again)" $p19
+      # the new version must start and keep running with settings written by the older version (no printer choice / approval saved yet)
+      $p20 = @()
+      Start-Process $exe; Start-Sleep 8
+      if (-not (Get-Process -Name $name -ErrorAction SilentlyContinue)) { $p20 += "the new version stopped with the older version's settings" }
+      Stop-Agent
+      $after = $null; try { $after = Get-Content $cfgFile -Raw | ConvertFrom-Json } catch { $p20 += "config.json is no longer readable" }
+      if ($after -and $after.agentId -ne "00000000-0000-4000-8000-0000000000aa") { $p20 += "the new version changed the pairing" }
+      Add-Result "20 new version runs with the older version's settings" $p20
+      Remove-Item $cfgFile, $devFile -Force -ErrorAction SilentlyContinue
+      foreach ($f in @("config.json", "device.bin")) { if (Test-Path (Join-Path $aside $f)) { Copy-Item (Join-Path $aside $f) $data -Force } }
+      Remove-Item $aside -Recurse -Force -ErrorAction SilentlyContinue
       $p17 = @()
       if (Get-Process -Name $oldName -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $oldExe }) { $p17 += "the older version is still running" }
       if (Test-Path $oldDir) { $p17 += "the older version's folder is still there" }

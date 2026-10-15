@@ -2,7 +2,8 @@ import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("agent", {
   state: () => ipcRenderer.invoke("state"),
-  pair: (code: string, label: string) => ipcRenderer.invoke("pair", code, label),
+  pair: (code: string, label: string, printer: string) => ipcRenderer.invoke("pair", code, label, printer),
+  requestPrinter: (printer: string) => ipcRenderer.invoke("request-printer", printer),
   testPrint: (printer: string, kind: "calibration" | "sample") => ipcRenderer.invoke("test-print", printer, kind),
   unpair: () => ipcRenderer.invoke("unpair"),
   backupChoose: () => ipcRenderer.invoke("backup-choose"),

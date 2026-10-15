@@ -92,6 +92,9 @@ export const PRINT_ERRORS: Record<string, string> = {
   lease_expired_after_submit: "The printer PC stopped responding while printing. Check the paper before reprinting so it is not printed twice.",
   max_attempts: "The printer PC could not complete this job after several tries.",
   printer_inactive: "The assigned printer is switched off in settings.",
+  printer_not_selected: "The printer PC refused this slip because it is not the printer approved for that PC. Check Settings → Printing, then print again.",
+  pc_replaced: "The printer PC was replaced by a new PC before this slip printed. Print it again if needed.",
+  pc_paired_again: "The printer PC was paired again before this slip printed. Print it again if needed.",
 };
 export function PrintBadge({ status }: { status?: string | null }) {
   if (!status) return <span className="badge bg-slate-100 text-slate-600">No print job</span>;

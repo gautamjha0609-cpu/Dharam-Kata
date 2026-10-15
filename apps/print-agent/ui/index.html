@@ -14,6 +14,7 @@
   button{min-height:38px;padding:0 14px;border:0;border-radius:8px;background:#19B957;color:#fff;font-weight:600;cursor:pointer;margin-top:10px}
   button.ghost{background:#fff;color:#0B2D4C;border:1px solid #b9c5d1} button.danger{background:#fff;color:#b42318;border:1px solid #f1b0aa}
   .badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:700} .ok{background:#dcf5e5;color:#116b34} .bad{background:#fde4e1;color:#9c2118}
+  .warn{background:#fff6e0;border-color:#f0c66b} .pick{display:flex;align-items:center;gap:8px;font-weight:400;margin:6px 0;padding:8px 10px;border:1px solid #dbe3ea;border-radius:8px;cursor:pointer} .pick input{width:auto;min-height:0}
   .err{color:#9c2118;margin-top:8px} .hint{color:#51657a;font-size:12px;margin-top:6px} ul{margin:6px 0 0;padding-left:18px} pre{margin:0;max-height:150px;overflow:auto;font-size:12px;background:#f4f7fa;padding:8px;border-radius:6px}
 </style>
 </head>
@@ -24,7 +25,14 @@
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let chosen = '';
+let pick = '';
+let changing = false;
 let last = '';
+// real printers to choose from (OneNote, Fax, XPS, Print to file are not listed)
+const choiceList = (s, name) => s.choices.length
+  ? s.choices.map(c => `<label class="pick"><input type="radio" name="${name}" value="${esc(c.name)}" ${c.name===pick?'checked':''}> ${esc(c.name)}${c.pdf ? ' <span class="hint">(saves a PDF file, no paper)</span>' : ''}</label>`).join('')
+  : `<p class="err">No printer found on this PC.</p><p class="hint">Connect the printer and install its driver in Windows (Settings → Bluetooth &amp; devices → Printers &amp; scanners). It then appears here by itself.</p>`;
+const bindPick = (name) => document.querySelectorAll(`input[name="${name}"]`).forEach(i => i.addEventListener('change', e => { pick = e.target.value; }));
 async function render(force) {
   const s = await window.agent.state();
   const snap = JSON.stringify(s);
@@ -33,27 +41,54 @@ async function render(force) {
   last = snap;
   $('#ver').textContent = 'Version ' + s.version + ' · ' + s.host;
   if (!s.paired) {
-    $('#app').innerHTML = `<div class="card"><b>Pair this PC</b>
+    if (pick && !s.choices.some(c => c.name === pick)) pick = '';
+    $('#app').innerHTML = `<div class="card"><b>Step 1 · Choose the printer for slips</b>
+      <p class="hint">This PC prints on this one printer only. It can be changed later (an owner approves the change on the website).</p>
+      ${choiceList(s, 'first')}</div>
+      <div class="card"><b>Step 2 · Pair this PC</b>
       <p class="hint">In the website go to Settings → Printing → Generate pairing code, then enter it here. The code works once and expires in 10 minutes.</p>
       <label for="code">Pairing code</label><input id="code" autocomplete="off" autocapitalize="characters" placeholder="e.g. 9F3A12BC">
       <label for="label">Name of this PC</label><input id="label" value="${esc(s.host)}">
       <button id="pairBtn">Pair</button><div id="perr" class="err"></div>
+      <p class="hint">If another PC already prints for this site, the owner must approve this PC on the website before it prints.</p>
       <p class="hint">Server: ${esc(s.server)}</p></div>`;
+    bindPick('first');
     $('#pairBtn').onclick = async () => {
+      if (!pick) { $('#perr').textContent = 'First choose the printer in step 1.'; return; }
       $('#pairBtn').disabled = true; $('#perr').textContent = '';
-      const r = await window.agent.pair($('#code').value, $('#label').value);
-      if (!r.ok) { $('#perr').textContent = r.error; $('#pairBtn').disabled = false; } else render(true);
+      const r = await window.agent.pair($('#code').value, $('#label').value, pick);
+      if (!r.ok) { $('#perr').textContent = r.error; $('#pairBtn').disabled = false; } else { pick = ''; render(true); }
     };
     return;
   }
-  if (!chosen && s.printers.length) chosen = s.printers[0];
+  const req = s.request;
+  const waitingPrinter = req && req.kind === 'change_printer' ? req.printer : null;
+  const needChoice = s.approval === 'approved' && (!s.printer || s.printerMissing || s.printerVirtual);
+  let printerCard;
+  if (s.approval === 'pending') {
+    printerCard = `<div class="card warn"><b>Waiting for approval</b>
+      <p>Another PC prints slips for this site now. An owner or administrator must approve this PC in the website (Settings → Printing). Until then this PC prints nothing.</p>
+      ${req && req.printer ? `<p class="hint">Printer asked for: <b>${esc(req.printer)}</b></p>` : ''}</div>`;
+  } else {
+    const head = s.printerMissing
+      ? `<p class="err"><b>Selected printer not found — choose it again.</b> “${esc(s.printer)}” is no longer installed on this PC (it may have been renamed, e.g. “(Copy 1)”). Slips are NOT printed on any other printer.</p>`
+      : s.printerVirtual ? `<p class="err"><b>“${esc(s.printer)}” is not a real printer.</b> No paper comes out. Choose the real printer.</p>`
+      : s.printer ? `<p>Slips print on <b>${esc(s.printer)}</b> <span class="badge ok">✓ Approved</span></p>`
+      : `<p class="err"><b>No printer chosen for this PC yet.</b> Choose the printer that prints slips.</p>`;
+    printerCard = `<div class="card ${needChoice ? 'warn' : ''}"><b>Printer for slips</b>${head}
+      ${waitingPrinter ? `<p class="hint">Waiting for approval on the website to change to <b>${esc(waitingPrinter)}</b>. Until then nothing changes.</p>` : ''}
+      ${changing || needChoice ? `${choiceList(s, 'change')}<button id="reqBtn">Ask to use this printer</button>${changing ? ' <button class="ghost" id="reqCancel">Cancel</button>' : ''}<div id="rerr" class="err"></div>
+        <p class="hint">An owner or administrator approves the change on the website.</p>` : `<button class="ghost" id="chg">Change printer</button>`}</div>`;
+  }
+  if (!chosen && s.printers.length) chosen = s.printer && s.printers.includes(s.printer) ? s.printer : s.printers[0];
   $('#app').innerHTML = `
+    ${printerCard}
     <div class="card"><b>${esc(s.label)}</b> <span class="badge ${s.connected ? 'ok' : 'bad'}">${s.connected ? '● Connected' : '○ Not connected'}</span>
       ${s.lastError ? `<div class="err">${esc(s.lastError)}</div>` : ''}
       <p class="hint">Jobs sent to Windows since start: ${s.jobsPrinted}${s.lastJob ? ' · last: ' + esc(s.lastJob) : ''}</p>
       <p class="hint">This agent runs in the background and starts with Windows. Closing this window keeps it running (see the tray icon).</p></div>
-    <div class="card"><b>Printers on this PC</b>
-      <p class="hint">An administrator chooses which printer receives invoices in the website (Settings → Printing). Use the buttons below to check alignment.</p>
+    <div class="card"><b>Test and calibration</b>
+      <p class="hint">Print the calibration sheet after setting up the printer, lay it over a real slip, then adjust X/Y in the website (Settings → Printing).</p>
       ${s.printers.length ? `<label for="pr">Printer</label><select id="pr">${s.printers.map(p => `<option ${p===chosen?'selected':''}>${esc(p)}</option>`).join('')}</select>
       <button class="ghost" id="cal">Print calibration sheet</button> <button class="ghost" id="smp">Print sample (TEST)</button><div id="tmsg" class="hint"></div>` : `<p class="err">No printer found on this PC.</p><p class="hint">Install the printer's driver in Windows (Settings → Bluetooth &amp; devices → Printers &amp; scanners). It then appears here by itself.</p>`}
       <p class="hint">“Sent to Windows print queue” means Windows accepted the job. It does not prove paper came out.</p></div>
@@ -65,6 +100,15 @@ async function render(force) {
     <div class="card"><b>Activity</b><pre>${esc(s.log.join('\n') || 'Nothing yet')}</pre></div>
     <div class="card"><button class="ghost" id="logopen">Show the log file</button> <button class="danger" id="unpair">Unpair this PC</button><p class="hint">The log file helps support find a problem. It never contains passwords.</p></div>`;
   $('#pr')?.addEventListener('change', e => chosen = e.target.value);
+  bindPick('change');
+  if ($('#chg')) $('#chg').onclick = () => { changing = true; pick = ''; render(true); };
+  if ($('#reqCancel')) $('#reqCancel').onclick = () => { changing = false; render(true); };
+  if ($('#reqBtn')) $('#reqBtn').onclick = async () => {
+    if (!pick) { $('#rerr').textContent = 'Choose a printer first.'; return; }
+    $('#reqBtn').disabled = true;
+    const r = await window.agent.requestPrinter(pick);
+    if (!r.ok) { $('#rerr').textContent = r.error; $('#reqBtn').disabled = false; } else { changing = false; pick = ''; render(true); }
+  };
   const t = (kind) => async () => { $('#tmsg').textContent = 'Sending…'; const r = await window.agent.testPrint($('#pr').value, kind); $('#tmsg').textContent = r.ok ? 'Sent to Windows print queue.' : 'Failed: ' + r.error; };
   $('#bopen').onclick = () => window.agent.backupOpen();
   $('#logopen').onclick = () => window.agent.logOpen();

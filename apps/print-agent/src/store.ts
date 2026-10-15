@@ -22,7 +22,17 @@ function writeJson(name: string, v: unknown) {
   renameSync(p + ".tmp", p); // atomic replace: a crash never leaves a half-written journal
 }
 
-export interface Config { serverUrl: string; agentId: string | null; label: string; backupDir?: string }
+export interface Config {
+  serverUrl: string; agentId: string | null; label: string; backupDir?: string;
+  /** the printer this PC is approved to print on (from the server); null = not chosen yet */
+  printer?: string | null;
+  /** "approved" | "pending" (waiting for the owner) | "rejected" */
+  approval?: string;
+  /** an open request on the website (takeover or printer change) */
+  request?: { kind: string; printer: string | null } | null;
+  /** fallback machine id when Windows' own id cannot be read */
+  machineSeed?: string;
+}
 export const loadConfig = (defaultUrl: string): Config => readJson<Config>("config.json", { serverUrl: defaultUrl, agentId: null, label: "" });
 export const saveConfig = (c: Config) => writeJson("config.json", c);
 

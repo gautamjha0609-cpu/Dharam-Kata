@@ -24,8 +24,11 @@ async function call<T>(base: string, path: string, init: RequestInit & { token?:
   return (j?.data ?? null) as T;
 }
 
-export async function pair(base: string, code: string, label: string, os: string) {
-  return call<{ agent_id: string; token: string }>(base, "/api/v1/agent/pair", { method: "POST", body: JSON.stringify({ code, label, os }) });
+/** What the server says about this PC (returned with every heartbeat). */
+export interface AgentState { approval: string; printer: string | null; request: { kind: string; printer: string | null; at: string } | null }
+
+export async function pair(base: string, code: string, label: string, os: string, machineId: string, printer: string) {
+  return call<{ agent_id: string; token: string; approval?: string }>(base, "/api/v1/agent/pair", { method: "POST", body: JSON.stringify({ code, label, os, machine_id: machineId, printer }) });
 }
 
 export class HttpApi implements Api {
@@ -34,7 +37,11 @@ export class HttpApi implements Api {
   async event(jobId: string, lease: string, status: EventStatus, errorCode?: string) {
     await call(this.base, `/api/v1/agent/jobs/${jobId}/events`, { method: "POST", token: this.token, body: JSON.stringify({ lease_token: lease, status, error_code: errorCode }) });
   }
-  heartbeat(version: string, os: string, printers: { name: string; status: string }[]) {
-    return call(this.base, "/api/v1/agent/heartbeat", { method: "POST", token: this.token, body: JSON.stringify({ version, os, printers }) });
+  heartbeat(version: string, os: string, printers: { name: string; status: string }[], machineId: string) {
+    return call<{ state?: AgentState | null }>(this.base, "/api/v1/agent/heartbeat", { method: "POST", token: this.token, body: JSON.stringify({ version, os, printers, machine_id: machineId }) });
+  }
+  /** "Change printer": the owner approves it on the website. */
+  requestPrinter(printer: string) {
+    return call<{ state?: AgentState | null }>(this.base, "/api/v1/agent/printer", { method: "POST", token: this.token, body: JSON.stringify({ printer }) });
   }
 }
