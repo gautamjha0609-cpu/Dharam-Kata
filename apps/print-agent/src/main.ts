@@ -32,7 +32,9 @@ app.setAppUserModelId(APP_ID);
 let win: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
-const printer = new ElectronPrinter(() => join(loadConfig(DEFAULT_SERVER).backupDir || defaultBackupDir(), "PDF printouts"));
+const printer = new ElectronPrinter((fileName) => {
+  return backup ? backup.pdfPath(fileName) : join(loadConfig(DEFAULT_SERVER).backupDir || defaultBackupDir(), "PDFs", `${fileName}.pdf`);
+});
 const log: string[] = [];
 const state = { connected: false, lastError: "", lastJob: "", printers: [] as string[], jobsPrinted: 0 };
 let core: AgentCore | null = null;

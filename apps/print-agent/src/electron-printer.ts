@@ -24,8 +24,8 @@ function hostWindow(): BrowserWindow {
 const OFFLINE = 0x80, PAPER_OUT = 0x10, PAPER_JAM = 0x8, NOT_AVAILABLE = 0x1000;
 
 export class ElectronPrinter implements PrinterPort {
-  /** `pdfDir` tells where PDF files go (a folder on this PC; created when needed). */
-  constructor(private readonly pdfDir: () => string = () => "") {}
+  /** `pdfTarget` resolves where each PDF file goes (full file path). */
+  constructor(private readonly pdfTarget: (fileName: string) => string = () => "") {}
 
   async list(): Promise<string[]> {
     const printers = await hostWindow().webContents.getPrintersAsync();
@@ -43,27 +43,43 @@ export class ElectronPrinter implements PrinterPort {
   }
 
   /**
-   * Silent print: no dialog, exact Windows device name, fixed page size in microns, zero margins, 100% scale.
-   * The callback means the OS print subsystem accepted/rejected the job. It is NOT proof of paper output.
+   * Silent print:
+   * 1. Generates and saves a local PDF copy in the Financial Year folder.
+   * 2. If physical printer, sends silently to Windows print spooler. If PDF/file printer, finishes with the saved PDF.
    */
   async print(html: string, o: { deviceName: string; widthMm: number; heightMm: number; copies: number; fileName?: string }): Promise<{ ok: boolean; error?: string; note?: string }> {
     // JavaScript is disabled in the render window: layout HTML is data, never executable.
     const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false, contextIsolation: true } });
     try {
       await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
-      const dir = this.pdfDir();
-      if (dir && isFilePrinter(o.deviceName)) {
-        // the page size comes from the layout's own @page rule (paper size in mm, zero margins), so the PDF is exactly the slip
-        const pdf = await win.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true, margins: { top: 0, bottom: 0, left: 0, right: 0 } });
-        const d = new Date();
-        const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-        const folder = join(dir, day);
-        mkdirSync(folder, { recursive: true });
-        const file = join(folder, `${safeName(o.fileName ?? `slip_${d.getHours()}${d.getMinutes()}${d.getSeconds()}`)}.pdf`);
-        writeFileSync(file, pdf);
-        return { ok: true, note: `${o.deviceName} cannot print silently, so the slip was saved as a PDF file: ${file}` };
+
+      // 1. Generate and save the local PDF copy into the Financial Year folder
+      let savedPdfPath: string | undefined;
+      const target = this.pdfTarget ? this.pdfTarget(safeName(o.fileName || "slip")) : "";
+      if (target) {
+        try {
+          const pdfBuf = await win.webContents.printToPDF({
+            printBackground: true,
+            pageSize: { width: Math.round(o.widthMm * 1000), height: Math.round(o.heightMm * 1000) },
+            margins: { marginType: "none" },
+            landscape: false,
+          });
+          mkdirSync(join(target, ".."), { recursive: true });
+          writeFileSync(target, pdfBuf);
+          savedPdfPath = target;
+        } catch {
+          // PDF save error is ignored so it never blocks physical printing
+        }
       }
-      return await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+
+      // 2. If it is a file printer (e.g. Microsoft Print to PDF, Adobe PDF), we already wrote the PDF file!
+      if (isFilePrinter(o.deviceName)) {
+        // a PDF printer prints nothing on paper: without the saved file the slip is lost, so that is a failure
+        return savedPdfPath ? { ok: true, note: `PDF saved: ${savedPdfPath}` } : { ok: false, error: "pdf save failed" };
+      }
+
+      // 3. Otherwise send to physical printer (Windows spooler)
+      return await new Promise<{ ok: boolean; error?: string; note?: string }>((resolve) => {
         const timer = setTimeout(() => resolve({ ok: false, error: "print timeout" }), 60_000);
         win.webContents.print(
           {
@@ -78,7 +94,7 @@ export class ElectronPrinter implements PrinterPort {
           },
           (success, reason) => {
             clearTimeout(timer);
-            resolve(success ? { ok: true } : { ok: false, error: reason });
+            resolve(success ? { ok: true, note: savedPdfPath ? `Printed & PDF saved: ${savedPdfPath}` : undefined } : { ok: false, error: reason });
           },
         );
       });

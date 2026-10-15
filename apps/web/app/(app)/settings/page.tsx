@@ -29,10 +29,7 @@ export default function SettingsPage() {
         </section>
       )}
       {can("print.route.manage") ? <PrintingCard /> : can("agent.remove") && <PairedPcsCard />}
-      <section className="card">
-        <h2 className="font-bold text-navy">Users</h2>
-        <p className="text-sm text-slate-600">Users, logins and passwords are created and managed only by the platform administrator (The Valuation House). Contact them to add an operator or change a password.</p>
-      </section>
+      {can("user.manage") ? <UsersCard /> : <section className="card"><h2 className="font-bold text-navy">Users</h2><p className="text-sm text-slate-600">Users, logins and passwords are created and managed only by the platform administrator (The Valuation House). Contact them to add an operator or change a password.</p></section>}
     </div>
   );
 }
@@ -122,12 +119,16 @@ function SeriesCard() {
 
 interface AgentRow { id: string; site_id: string; label: string; status: string; approval?: string; app_version: string | null; os: string | null; printers_seen: { name: string; status?: string }[] | null; last_heartbeat_at: string | null }
 interface PrinterRow { id: string; agent_id: string; label: string; os_printer_name: string; paper_w_mm: string; paper_h_mm: string; offset_x_mm: string; offset_y_mm: string; active: boolean; model_key: string | null }
+interface DestinationRow { printer_id: string; origin_site_id: string; is_default: boolean; active: boolean }
+interface RemovedAgentRow { id: string; label: string; revoked_at: string | null }
 
 function PrintingCard() {
   const { org, sites } = useApp();
   const [site, setSite] = useState("");
   const [agents, setAgents] = useState<AgentRow[]>([]);
+  const [removedAgents, setRemovedAgents] = useState<RemovedAgentRow[]>([]);
   const [printers, setPrinters] = useState<PrinterRow[]>([]);
+  const [destinations, setDestinations] = useState<DestinationRow[]>([]);
   const [code, setCode] = useState<{ code: string; expires_at: string } | null>(null);
   const [pick, setPick] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<{ k: "ok" | "error"; t: string } | null>(null);
@@ -137,11 +138,16 @@ function PrintingCard() {
   const load = useCallback(async () => {
     if (!org) return;
     const sb = supabase();
-    const [a, p] = await Promise.all([
-      sb.from("print_agents").select("id,site_id,label,status,approval,app_version,os,printers_seen,last_heartbeat_at").eq("organization_id", org.organization_id),
-      sb.from("printer_devices").select("*").eq("organization_id", org.organization_id),
+    const [a, r, p, d] = await Promise.all([
+      sb.from("print_agents").select("id,site_id,label,status,approval,app_version,os,printers_seen,last_heartbeat_at").eq("organization_id", org.organization_id).eq("status", "active"),
+      sb.from("print_agents").select("id,label,revoked_at").eq("organization_id", org.organization_id).eq("status", "revoked").order("revoked_at", { ascending: false }),
+      sb.from("printer_devices").select("*").eq("organization_id", org.organization_id).eq("active", true),
+      sb.from("print_destinations").select("printer_id,origin_site_id,is_default,active").eq("organization_id", org.organization_id).eq("active", true),
     ]);
-    setAgents((a.data ?? []) as unknown as AgentRow[]); setPrinters((p.data ?? []) as PrinterRow[]);
+    setAgents((a.data ?? []) as unknown as AgentRow[]);
+    setRemovedAgents((r.data ?? []) as RemovedAgentRow[]);
+    setPrinters((p.data ?? []) as PrinterRow[]);
+    setDestinations((d.data ?? []) as DestinationRow[]);
     setLoaded(true);
   }, [org]);
   useEffect(() => { void load(); const t = setInterval(() => void load(), 20000); return () => clearInterval(t); }, [load]);
@@ -196,28 +202,83 @@ function PrintingCard() {
       <AgentRequests onChange={() => void load()} />
 
       {!loaded && <div className="skeleton h-20 w-full" aria-busy="true" aria-label="Loading printers" />}
-      {agents.map((a) => (
-        <div key={a.id} className="rounded-lg border border-slate-200 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div><p className="font-semibold text-navy">{a.label} <span className="text-sm font-normal text-slate-600">· {sites.find((s) => s.id === a.site_id)?.name}</span></p>
-              <p className="text-xs text-slate-600">v{a.app_version ?? "?"} · {a.os ?? ""} · last seen {a.last_heartbeat_at ? fmtDateTime(a.last_heartbeat_at) : "never"}</p></div>
-            {a.status === "active" && a.approval === "pending" && <span className="badge bg-amber-100 text-amber-900">⏳ Waiting for approval</span>}
-            {a.status === "active" ? <button className="btn-danger !min-h-[36px]" onClick={() => revoke(a)}>Remove</button> : <span className="badge bg-slate-100 text-slate-600">– Removed</span>}
-          </div>
-          {a.status === "active" && a.approval !== "pending" && (
-            <div className="mt-3 space-y-2">
-              {printers.filter((p) => p.agent_id === a.id).map((p) => <PrinterEditor key={p.id} p={p} onSave={calibrate} onModel={async (k) => { const r = await applyModel(p.id, k); setMsg(r?.error ? { k: "error", t: friendlyError(r.error) } : { k: "ok", t: "Environment saved for this printer." }); void load(); }} status={(a.printers_seen ?? []).find((s) => s.name === p.os_printer_name)?.status} />)}
-              {(a.printers_seen ?? []).filter((s) => !isVirtualPrinter(s.name) && !printers.some((p) => p.agent_id === a.id && p.os_printer_name === s.name)).map((s) => {
-                const k = `${a.id}:${s.name}`; // the same printer name can exist on two PCs
-                return (
-                  <div key={s.name} className="space-y-2 rounded-lg border border-dashed border-slate-300 p-3 text-sm"><PrinterModelPicker id={`m-${a.id}-${s.name}`} value={pick[k] ?? matchPrinterModel(s.name)?.key ?? ""} onChange={(v) => setPick({ ...pick, [k]: v })} />{matchPrinterModel(s.name) && !pick[k] && <p className="text-xs text-green-800">✓ Model detected automatically from the Windows printer name.</p>}{isPdfPrinter(s.name) && <p className="text-xs text-amber-900">⚠ This only saves a PDF file on the PC. No paper comes out.</p>}<div className="flex flex-wrap items-center justify-between gap-2"><span>Found: <b>{s.name}</b> {s.status && s.status !== "ready" && <span className="badge bg-amber-100 text-amber-900">⚠ {s.status.replaceAll("_", " ")}</span>}</span><button className="btn-ghost !min-h-[36px]" onClick={() => bind(a, s.name)}>Use for {sites.find((x) => x.id === a.site_id)?.name}</button></div></div>
-                );
-              })}
-              {(a.printers_seen ?? []).length > 0 && (a.printers_seen ?? []).every((s) => isVirtualPrinter(s.name) || isPdfPrinter(s.name)) && <Alert kind="warn">No real printer found on this PC (only OneNote, Fax, XPS or PDF). Connect the printer to this PC and install its Windows driver, or use another PC.</Alert>}
-            </div>
-          )}
+      {loaded && agents.length === 0 && (
+        <div className="rounded-lg border border-slate-200 p-4 text-center text-sm text-slate-600">
+          <p className="font-semibold text-navy">No printer PC currently active</p>
+          <p className="mt-1">Generate a pairing code above to pair a computer running the Print Agent.</p>
         </div>
-      ))}
+      )}
+      {agents.map((a) => {
+        const assignedPrinters = printers.filter((p) => p.agent_id === a.id);
+        return (
+          <div key={a.id} className="rounded-lg border border-slate-200 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="font-semibold text-navy">{a.label} <span className="text-sm font-normal text-slate-600">· {sites.find((s) => s.id === a.site_id)?.name}</span></p>
+                <p className="text-xs text-slate-600">v{a.app_version ?? "?"} · {a.os ?? ""} · last seen {a.last_heartbeat_at ? fmtDateTime(a.last_heartbeat_at) : "never"}</p>
+              </div>
+              {a.status === "active" && a.approval === "pending" && <span className="badge bg-amber-100 text-amber-900">⏳ Waiting for approval</span>}
+              {a.status === "active" ? <button className="btn-danger !min-h-[36px]" onClick={() => revoke(a)}>Remove</button> : <span className="badge bg-slate-100 text-slate-600">– Removed</span>}
+            </div>
+            {a.status === "active" && a.approval !== "pending" && (
+              <div className="mt-3 space-y-2">
+                {assignedPrinters.length === 0 && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                    <p className="font-semibold">⚠ No printer paired</p>
+                    <p className="mt-0.5 text-xs text-amber-800">This PC is active, but no printer is set as default yet. Choose one of the detected printers below to set as default.</p>
+                  </div>
+                )}
+                {assignedPrinters.map((p) => (
+                  <PrinterEditor
+                    key={p.id}
+                    p={p}
+                    isDefault={destinations.some((d) => d.printer_id === p.id && d.is_default)}
+                    onSave={calibrate}
+                    onModel={async (k) => {
+                      const r = await applyModel(p.id, k);
+                      setMsg(r?.error ? { k: "error", t: friendlyError(r.error) } : { k: "ok", t: "Environment saved for this printer." });
+                      void load();
+                    }}
+                    status={(a.printers_seen ?? []).find((s) => s.name === p.os_printer_name)?.status}
+                  />
+                ))}
+                {(a.printers_seen ?? []).filter((s) => !isVirtualPrinter(s.name) && !printers.some((p) => p.agent_id === a.id && p.os_printer_name === s.name)).map((s) => {
+                  const k = `${a.id}:${s.name}`;
+                  return (
+                    <div key={s.name} className="space-y-2 rounded-lg border border-dashed border-slate-300 p-3 text-sm">
+                      <PrinterModelPicker id={`m-${a.id}-${s.name}`} value={pick[k] ?? matchPrinterModel(s.name)?.key ?? ""} onChange={(v) => setPick({ ...pick, [k]: v })} />
+                      {matchPrinterModel(s.name) && !pick[k] && <p className="text-xs text-green-800">✓ Model detected automatically from the Windows printer name.</p>}
+                      {isPdfPrinter(s.name) && <p className="text-xs text-amber-900">⚠ This only saves a PDF file on the PC. No paper comes out.</p>}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span>Found: <b>{s.name}</b> {s.status && s.status !== "ready" && <span className="badge bg-amber-100 text-amber-900">⚠ {s.status.replaceAll("_", " ")}</span>}</span>
+                        <button className="btn-ghost !min-h-[36px]" onClick={() => bind(a, s.name)}>Set as default for {sites.find((x) => x.id === a.site_id)?.name}</button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {(!a.printers_seen || a.printers_seen.length === 0) && (
+                  <p className="text-xs text-amber-800">No printers detected from this PC yet. Ensure the Print Agent is running on the PC.</p>
+                )}
+                {(a.printers_seen ?? []).length > 0 && (a.printers_seen ?? []).every((s) => isVirtualPrinter(s.name) || isPdfPrinter(s.name)) && (
+                  <Alert kind="warn">No real printer found on this PC (only OneNote, Fax, XPS or PDF). Connect the printer to this PC and install its Windows driver, or use another PC.</Alert>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {removedAgents.length > 0 && (
+        <details className="mt-3 text-xs text-slate-500">
+          <summary className="cursor-pointer font-medium hover:text-slate-700">Removed PCs history ({removedAgents.length})</summary>
+          <ul className="mt-2 space-y-1 pl-3 text-slate-600">
+            {removedAgents.map((r) => (
+              <li key={r.id}>
+                • <span className="font-semibold">{r.label}</span> {r.revoked_at ? `— removed ${fmtDateTime(r.revoked_at)}` : ""}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </section>
   );
 }
@@ -258,15 +319,19 @@ function PairedPcsCard() {
   );
 }
 
-function PrinterEditor({ p, onSave, onModel, status }: { p: PrinterRow; onSave: (p: PrinterRow, x: string, y: string) => void; onModel: (key: string) => void; status?: string }) {
+function PrinterEditor({ p, isDefault, onSave, onModel, status }: { p: PrinterRow; isDefault?: boolean; onSave: (p: PrinterRow, x: string, y: string) => void; onModel: (key: string) => void; status?: string }) {
   const [model, setModel] = useState(p.model_key ?? matchPrinterModel(p.os_printer_name)?.key ?? "");
   const [x, setX] = useState(String(Number(p.offset_x_mm)));
   const [y, setY] = useState(String(Number(p.offset_y_mm)));
   return (
     <div className="rounded-lg bg-slate-50 p-3 text-sm">
-      <p className="font-semibold">{p.os_printer_name} <span className="font-normal text-slate-600">· paper {num(p.paper_w_mm, 1)}×{num(p.paper_h_mm, 1)} mm</span> {status && (status === "ready" ? <span className="badge bg-green-100 text-green-800">✓ Ready</span> : <span className="badge bg-amber-100 text-amber-900">⚠ {status.replaceAll("_", " ")}</span>)}</p>
-      {isVirtualPrinter(p.os_printer_name) && <p className="mt-1 text-sm font-medium text-red-700">✕ “{p.os_printer_name}” is not a real printer. No paper comes out. Choose a real printer for this site, or remove this PC.</p>}
-      {isPdfPrinter(p.os_printer_name) && <p className="mt-1 text-xs text-amber-900">⚠ Saves a PDF file on the PC only. No paper comes out.</p>}
+      <div className="flex flex-wrap items-center gap-2 font-semibold">
+        <span>🖨 {p.os_printer_name}</span>
+        {isDefault ? <span className="badge bg-green-100 text-green-800">✓ Default for this site</span> : null}
+        <span className="font-normal text-slate-600">· paper {num(p.paper_w_mm, 1)}×{num(p.paper_h_mm, 1)} mm</span>
+        {status && (status === "ready" ? <span className="badge bg-green-100 text-green-800">✓ Ready</span> : <span className="badge bg-amber-100 text-amber-900">⚠ {status.replaceAll("_", " ")}</span>)}
+      </div>
+      {isVirtualPrinter(p.os_printer_name) && <p className="mt-1 text-sm font-medium text-red-700">✕ “{p.os_printer_name}” is not a physical printer. No paper comes out. Choose a physical printer for this site.</p>}
       <div className="mt-2 flex flex-wrap items-end gap-3">
         <div><label className="label" htmlFor={`x${p.id}`}>X offset (mm)</label><input id={`x${p.id}`} className="field !w-28" inputMode="decimal" value={x} onChange={(e) => setX(e.target.value)} /></div>
         <div><label className="label" htmlFor={`y${p.id}`}>Y offset (mm)</label><input id={`y${p.id}`} className="field !w-28" inputMode="decimal" value={y} onChange={(e) => setY(e.target.value)} /></div>
@@ -309,6 +374,55 @@ function TicketImageCard() {
         <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
       </label>
       <p className="text-xs text-slate-600">PNG, JPEG or WebP, up to 8 MB. Large photos are automatically resized and compressed.</p>
+    </section>
+  );
+}
+
+interface UserDevices { user_id: string; role: string; login_id: string | null; full_name: string | null; devices: { name: string; since: string; last_active: string }[] }
+
+/** Owner / administrator: who is signed in where (at most 2 devices per user) and "Sign out of all devices" for theft or emergency. */
+function UsersCard() {
+  const { org } = useApp();
+  const [users, setUsers] = useState<UserDevices[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ k: "ok" | "error"; t: string } | null>(null);
+  const load = useCallback(async () => {
+    if (!org) return;
+    const { data, error } = await supabase().rpc("list_user_devices", { p_org: org.organization_id });
+    if (error) { setMsg({ k: "error", t: friendlyError(error) }); setUsers([]); return; }
+    setUsers((data ?? []) as UserDevices[]);
+  }, [org]);
+  useEffect(() => { void load(); }, [load]);
+
+  async function signOutAll(u: UserDevices) {
+    if (!org) return;
+    const who = u.full_name || u.login_id || "this user";
+    if (!confirm(`Sign out ${who} on ALL devices? Use this if a phone or PC was lost or stolen. ${who} can then log in again on up to 2 devices.`)) return;
+    setBusy(u.user_id); setMsg(null);
+    const { error } = await supabase().rpc("sign_out_all_devices", { p_org: org.organization_id, p_user: u.user_id });
+    setBusy(null);
+    setMsg(error ? { k: "error", t: friendlyError(error) } : { k: "ok", t: `${who} is signed out on all devices (within a few minutes on devices that are open now) and can log in again on up to 2 devices.` });
+    void load();
+  }
+
+  return (
+    <section className="card space-y-3">
+      <h2 className="font-bold text-navy">Users and devices</h2>
+      <p className="text-sm text-slate-600">Each user can be logged in on at most 2 devices. A 3rd device is refused until the user logs out on one of them. If a device is lost or stolen, use <b>Sign out of all devices</b>.</p>
+      {msg && <Alert kind={msg.k}>{msg.t}</Alert>}
+      {!users && <div className="skeleton h-16 w-full" aria-busy="true" aria-label="Loading users" />}
+      {users?.map((u) => (
+        <div key={u.user_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-3 text-sm">
+          <div className="min-w-0">
+            <p className="break-words font-semibold text-navy">{u.full_name || u.login_id} <span className="font-normal text-slate-600">· {u.login_id} · {u.role}</span></p>
+            <p className="text-xs text-slate-600">
+              {u.devices.length === 0 ? "Not logged in on any device" : `Logged in on ${u.devices.length} of 2: ${u.devices.map((d) => `${d.name} (since ${fmtDateTime(d.since)})`).join(", ")}`}
+            </p>
+          </div>
+          {u.devices.length > 0 && <button type="button" className="btn-danger !min-h-[40px]" disabled={busy === u.user_id} onClick={() => void signOutAll(u)}>{busy === u.user_id ? "Signing out…" : "Sign out of all devices"}</button>}
+        </div>
+      ))}
+      <p className="text-xs text-slate-600">New users and password changes are handled by the platform administrator (The Valuation House).</p>
     </section>
   );
 }

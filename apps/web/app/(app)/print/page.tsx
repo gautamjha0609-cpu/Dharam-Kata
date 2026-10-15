@@ -12,11 +12,15 @@ import { WAIT_ALERT_MS, retryPrint } from "@/components/print-status";
 
 interface Job { id: string; invoice_id: string; job_type: string; status: string; attempt_count: number; last_error_code: string | null; queued_at: string; reprint_reason: string | null }
 interface Agent { id: string; label: string; status: string; app_version: string | null; last_heartbeat_at: string | null }
+interface Printer { id: string; agent_id: string; label: string; os_printer_name: string; active: boolean }
+interface Destination { printer_id: string; is_default: boolean; active: boolean }
 
 export default function PrintCentre() {
   const { org } = useApp();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [printers, setPrinters] = useState<Printer[]>([]);
+  const [dests, setDests] = useState<Destination[]>([]);
   const [status, setStatus] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
@@ -25,9 +29,17 @@ export default function PrintCentre() {
     const sb = supabase();
     let q = sb.from("print_jobs").select("id,invoice_id,job_type,status,attempt_count,last_error_code,queued_at,reprint_reason").eq("organization_id", org.organization_id).order("queued_at", { ascending: false }).limit(100);
     if (status) q = q.eq("status", status as never);
-    const [j, a] = await Promise.all([q, sb.from("print_agents").select("id,label,status,app_version,last_heartbeat_at").eq("organization_id", org.organization_id)]);
+    const [j, a, p, d] = await Promise.all([
+      q,
+      sb.from("print_agents").select("id,label,status,app_version,last_heartbeat_at").eq("organization_id", org.organization_id).eq("status", "active"),
+      sb.from("printer_devices").select("id,agent_id,label,os_printer_name,active").eq("organization_id", org.organization_id).eq("active", true),
+      sb.from("print_destinations").select("printer_id,is_default,active").eq("organization_id", org.organization_id).eq("active", true),
+    ]);
     if (j.error) setErr(friendlyError(j.error));
-    setJobs((j.data ?? []) as Job[]); setAgents((a.data ?? []) as Agent[]);
+    setJobs((j.data ?? []) as Job[]);
+    setAgents((a.data ?? []) as Agent[]);
+    setPrinters((p.data ?? []) as Printer[]);
+    setDests((d.data ?? []) as Destination[]);
   }, [org, status]);
   useEffect(() => { void load(); }, [load]);
   useLive(load, ["print_jobs"], { staleMs: 30_000 });
@@ -51,13 +63,31 @@ export default function PrintCentre() {
       <PageHead title="Print centre" sub="Print jobs and printer PCs for your sites." />
       {err && <Alert>{err}</Alert>}
       <div className="mb-4 grid gap-2 sm:grid-cols-2">
-        {agents.map((a) => (
-          <div key={a.id} className="card flex items-center justify-between text-sm">
-            <div><p className="font-semibold text-navy">{a.label}</p><p className="text-slate-600">v{a.app_version ?? "?"} · last seen {a.last_heartbeat_at ? fmtDateTime(a.last_heartbeat_at) : "never"}</p></div>
-            {a.status === "revoked" ? <span className="badge bg-slate-100 text-slate-600">– Revoked</span> : online(a) ? <span className="badge bg-green-100 text-green-800">● Online</span> : <span className="badge bg-amber-100 text-amber-900">○ Offline</span>}
-          </div>
-        ))}
-        {agents.length === 0 && <Empty title="No printer PC enrolled" hint="An admin can add one in Settings → Printing." />}
+        {agents.map((a) => {
+          const paired = printers.find((p) => p.agent_id === a.id);
+          const isDef = paired && dests.some((d) => d.printer_id === paired.id && d.is_default);
+          return (
+            <div key={a.id} className="card flex items-center justify-between text-sm">
+              <div>
+                <p className="font-semibold text-navy">{a.label}</p>
+                <p className="text-xs text-slate-600">v{a.app_version ?? "?"} · last seen {a.last_heartbeat_at ? fmtDateTime(a.last_heartbeat_at) : "never"}</p>
+                <p className="mt-1 text-xs">
+                  {paired ? (
+                    <span className="font-medium text-slate-800">
+                      🖨 {paired.label} {isDef ? <span className="font-semibold text-green-700">(Default)</span> : null}
+                    </span>
+                  ) : (
+                    <span className="font-medium text-amber-700">⚠ No printer paired</span>
+                  )}
+                </p>
+              </div>
+              <div>
+                {online(a) ? <span className="badge bg-green-100 text-green-800">● Online</span> : <span className="badge bg-amber-100 text-amber-900">○ Offline</span>}
+              </div>
+            </div>
+          );
+        })}
+        {agents.length === 0 && <Empty title="No printer PC active" hint="An admin can pair one in Settings → Printing." />}
       </div>
       <Select className="field mb-3 sm:max-w-xs" aria-label="Filter by status" value={status} onChange={(e) => setStatus(e.target.value)}>
         <option value="">All statuses</option>

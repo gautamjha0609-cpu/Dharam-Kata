@@ -87,6 +87,14 @@ describe("AgentCore", () => {
     expect(h.events[0]).toEqual({ status: "failed", code: "invalid_template" });
   });
 
+  it("rejects a layout whose paper width exceeds the printer physical capacity", async () => {
+    const preset = ticketPreset();
+    const h = harness({ job: baseJob({ template: { ...preset, paper: { w: 297, h: 210 } } }) });
+    expect(await h.core.tick()).toBe("failed");
+    expect(h.events[0]).toEqual({ status: "failed", code: "paper_width_exceeds_printer" });
+    expect(h.printed).toHaveLength(0);
+  });
+
   it("refuses to print when text cannot fit (no truncated invoices)", async () => {
     const h = harness({ job: baseJob({ payload: { serial: "X".repeat(250), vehicle: "RJ14" } }) });
     expect(await h.core.tick()).toBe("failed");
@@ -192,5 +200,14 @@ describe("sanitizeValues", () => {
     expect(await h.core.tick()).toBe("failed");
     expect(h.printed).toHaveLength(0);
     expect(h.events.at(-1)).toEqual({ status: "failed", code: "printer_missing" });
+  });
+
+  it("a reprint saves its PDF under its own name (the original slip's PDF is kept)", async () => {
+    const h = harness({ job: baseJob({ job_type: "reprint" }) });
+    expect(await h.core.tick()).toBe("printed");
+    expect(h.printed[0]!.fileName).toMatch(/^VNK_26-27_000125_RJ14GD9158_\d{2}-\d{2}-\d{4}_duplicate_\d{6}$/);
+    const o = harness();
+    await o.core.tick();
+    expect(o.printed[0]!.fileName).not.toContain("duplicate");
   });
 });

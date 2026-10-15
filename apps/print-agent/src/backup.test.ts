@@ -49,6 +49,14 @@ describe("DailyBackup", () => {
     expect(row.getCell("N").value).toBe(19105);
   });
 
+  it("resolves PDF folder and file paths inside FY / month / PDFs", () => {
+    const b = new DailyBackup(dir, () => new Date(at));
+    expect(b.pdfDir()).toBe(join(dir, "FY 2026-27", "10 October", "PDFs"));
+    expect(b.pdfPath("168_RJ14GE1248_12-10-2026")).toBe(
+      join(dir, "FY 2026-27", "10 October", "PDFs", "168_RJ14GE1248_12-10-2026.pdf")
+    );
+  });
+
   it("appends every print to the SAME day's file and updates a job instead of duplicating it", async () => {
     const b = new DailyBackup(dir, () => new Date(at));
     await b.record(entry());

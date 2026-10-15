@@ -786,6 +786,13 @@ Same shape as your ticket image.` });
                     <AreaNum label="Width (mm)" value={layout.paper.w} onCommit={(v) => commitPaper("w", v)} />
                     <AreaNum label="Height (mm)" value={layout.paper.h} onCommit={(v) => commitPaper("h", v)} />
                   </div>
+                  {layout.paper.w > 216 && (
+                    <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900">
+                      <p className="font-semibold">⚠️ Paper width ({layout.paper.w} mm) exceeds standard printer carriage</p>
+                      <p className="mt-0.5">Standard 80-column dot matrix and A4 laser printers (such as Canon MF3010) take up to 216 mm width. Widths above 216 mm may be clipped on physical paper.</p>
+                      <button type="button" className="btn-ghost mt-1.5 !min-h-[30px] !bg-white !text-xs" onClick={() => setPaper(210, layout.paper.h)}>Fit to standard width (210 mm)</button>
+                    </div>
+                  )}
                 </section>
 
                 <section aria-labelledby="ps2">
@@ -816,6 +823,7 @@ Same shape as your ticket image.` });
                         })}
                       </div>
                       <button className="btn-ghost w-full" onClick={() => chooseWhatToPrint("blank")}>Re-fit the design to this paper size</button>
+                      <button type="button" className="btn-ghost w-full !min-h-[38px] text-xs" onClick={centreArea}>Center printing area on paper</button>
                       <p className="text-xs text-slate-600">The design (header, footer, notes, signature line) is scaled to the paper size you chose, and the printing area is placed between header and footer.</p>
                     </div>
                   )}

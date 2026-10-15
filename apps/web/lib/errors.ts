@@ -32,6 +32,7 @@ const MESSAGES: Record<string, string> = {
   amount_exceeds_outstanding: "Amount is more than the outstanding balance.",
   invoice_not_issued: "This entry is already deleted.",
   agent_not_found: "This printer PC was not found. Refresh the page.",
+  user_not_in_firm: "This user is not part of your firm.",
   agent_not_approved: "This PC is waiting for approval. Approve it first (top of Printing).",
   request_not_found: "This request no longer exists. Refresh the page.",
   request_already_decided: "This request was already approved or rejected. Refresh the page.",

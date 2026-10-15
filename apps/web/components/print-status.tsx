@@ -50,8 +50,7 @@ export function PrintTarget({ status }: { status: SitePrintStatus | null }) {
       {p.online
         ? <span className="badge bg-green-100 text-green-800">● Online</span>
         : <span className="badge bg-amber-100 text-amber-900">○ Offline{p.last_seen ? ` since ${fmtDateTime(p.last_seen)}` : ""}</span>}
-      {fake && <span className="w-full text-xs font-medium">✕ This is not a real printer. No paper comes out. Choose a real printer in {fix}.</span>}
-      {!fake && isPdfPrinter(p.os_name) && <span className="w-full text-xs text-amber-900">Saves a PDF file on the PC only. No paper comes out.</span>}
+      {fake && <span className="w-full text-xs font-medium">✕ This is not a physical printer. No paper comes out. Choose a physical printer in {fix}.</span>}
       {!p.online && !fake && <span className="w-full text-xs text-amber-900">Slips wait until the Print Agent on {p.pc} is running and online.</span>}
     </div>
   );

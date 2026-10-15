@@ -56,6 +56,19 @@ export class DailyBackup {
   private jsonPath(parts: { fy: string; month: string; day: string }) { return join(this.dayDir(parts), ".data", `${parts.day}.json`); }
   private xlsxPath(parts: { fy: string; month: string; day: string }) { return join(this.dayDir(parts), `${parts.day}.xlsx`); }
 
+  /** Directory where PDF copies of printed slips are saved: <root>/FY 2026-27/10 October/PDFs */
+  pdfDir(at: Date = this.now()): string {
+    const parts = dayParts(at);
+    return join(this.dayDir(parts), "PDFs");
+  }
+
+  /** Full path to save a PDF slip: <root>/FY 2026-27/10 October/PDFs/<cleanName>.pdf */
+  pdfPath(fileName: string, at: Date = this.now()): string {
+    const clean = fileName.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 120) || "slip";
+    const name = clean.toLowerCase().endsWith(".pdf") ? clean : `${clean}.pdf`;
+    return join(this.pdfDir(at), name);
+  }
+
   private readEntries(p: string): BackupEntry[] {
     try { return existsSync(p) ? (JSON.parse(readFileSync(p, "utf8")) as BackupEntry[]) : []; } catch { return []; }
   }

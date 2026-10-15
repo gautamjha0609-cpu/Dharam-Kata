@@ -136,7 +136,18 @@ export function modelsByMake(): [string, PrinterModel[]][] {
 
 export const partsLabel = (p?: PrinterModel) => (p?.parts ? `1 + ${p.parts - 1} copies (carbon)` : "copies: not confirmed");
 
-/** Windows "printers" that never put paper out (OneNote, Fax, XPS writer, Print to file). They are hidden when a printer is set up. */
-export const isVirtualPrinter = (windowsName: string) => /onenote|send to|^fax\b|xps document writer|print to file/i.test(windowsName) && !isPdfPrinter(windowsName);
-/** PDF printers only save a file (kept for clients who want a PDF copy); shown with a "no paper" warning. */
+/** Windows "printers" that never put paper out (OneNote, Fax, XPS writer, Print to file, PDF). They are hidden when a printer is set up. */
+export const isVirtualPrinter = (windowsName: string) => /onenote|send to|^fax\b|xps document writer|print to file|\bpdf\b/i.test(windowsName);
+/** PDF printers only save a file. */
 export const isPdfPrinter = (windowsName: string) => /\bpdf\b/i.test(windowsName);
+
+/** Maximum physical paper width (mm) the printer can accept without clipping. */
+export function maxPrintableWidthMm(model?: PrinterModel | null): number {
+  if (!model) return 216; // default 8.5 inches / A4 width (standard weighbridge carriage)
+  if (model.family === "thermal") return 80;
+  if (model.columns === 136) return 381; // 15-inch wide carriage
+  if (model.columns === 80) return 216; // 8.5-inch standard dot matrix
+  if (model.family === "laser") return 216; // A4 portrait / Letter
+  return 216;
+}
+

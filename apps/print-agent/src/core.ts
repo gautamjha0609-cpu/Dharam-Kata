@@ -1,4 +1,4 @@
-import { LayoutSchema, renderHtml, ticketPreset, type Layout, type PrintValues } from "@dk/print-template";
+import { LayoutSchema, renderHtml, ticketPreset, getModel, matchPrinterModel, maxPrintableWidthMm, type Layout, type PrintValues } from "@dk/print-template";
 
 /** What the server returns from POST /agent/jobs/claim. Treated as untrusted data and re-validated. */
 export interface ClaimedJob {
@@ -73,11 +73,13 @@ export class AgentCore {
   private lastFailCode = "";
 
   /** PDF file name: invoice no._vehicle no_date (an opening slip gets _opening so it never overwrites the closing slip). */
-  private pdfName(v: Record<string, string | undefined>): string {
+  private pdfName(v: Record<string, string | undefined>, jobType: ClaimedJob["job_type"] = "original"): string {
     const d = this.now();
     const date = `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
     const part = (s?: string) => (s ?? "").replace(/[^A-Za-z0-9.-]+/g, "_").replace(/^_+|_+$/g, "");
-    return [part(v.serial) || "invoice", part(v.vehicle) || "vehicle", date].join("_") + (v.stage === "open" ? "_opening" : "");
+    // a reprint gets its own file (time added), so the original slip's PDF is never overwritten
+    const reprint = jobType === "reprint" ? `_duplicate_${String(d.getHours()).padStart(2, "0")}${String(d.getMinutes()).padStart(2, "0")}${String(d.getSeconds()).padStart(2, "0")}` : "";
+    return [part(v.serial) || "invoice", part(v.vehicle) || "vehicle", date].join("_") + (v.stage === "open" ? "_opening" : "") + reprint;
   }
 
   /** Retry delivering final statuses that failed to reach the server (e.g. network drop after printing). */
@@ -167,6 +169,13 @@ export class AgentCore {
     const bad = await this.printer.check?.(job.printer.os_name);
     if (bad) return this.fail(job, bad);
 
+    // 2b. paper size compatibility check: layout paper must physically fit the printer carriage/tray
+    const model = getModel(job.printer.model_key) ?? matchPrinterModel(job.printer.os_name);
+    const maxW = maxPrintableWidthMm(model);
+    if (layout.paper.w > maxW + 5) {
+      return this.fail(job, "paper_width_exceeds_printer");
+    }
+
     // 3. render from the bundled allow-listed template engine
     await this.report(job, "rendering");
     const floor = Number(job.printer.legibility_floor_pt ?? 0);
@@ -180,7 +189,7 @@ export class AgentCore {
 
     // 4. hand to the OS. If we crash after this line the server turns the job UNKNOWN (never auto-retried).
     await this.report(job, "submitting");
-    const res = await this.printer.print(html, { deviceName: job.printer.os_name, widthMm: layout.paper.w, heightMm: layout.paper.h, copies: layout.copies, fileName: this.pdfName(values) });
+    const res = await this.printer.print(html, { deviceName: job.printer.os_name, widthMm: layout.paper.w, heightMm: layout.paper.h, copies: layout.copies, fileName: this.pdfName(values, job.job_type) });
     if (!res.ok) return this.fail(job, mapPrintError(res.error));
     if (res.note) this.log(res.note);
     this.journal.markSubmitted(job.id);

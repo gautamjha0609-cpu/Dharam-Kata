@@ -30,7 +30,7 @@ let changing = false;
 let last = '';
 // real printers to choose from (OneNote, Fax, XPS, Print to file are not listed)
 const choiceList = (s, name) => s.choices.length
-  ? s.choices.map(c => `<label class="pick"><input type="radio" name="${name}" value="${esc(c.name)}" ${c.name===pick?'checked':''}> ${esc(c.name)}${c.pdf ? ' <span class="hint">(saves a PDF file, no paper)</span>' : ''}</label>`).join('')
+  ? s.choices.map(c => `<label class="pick"><input type="radio" name="${name}" value="${esc(c.name)}" ${c.name===pick?'checked':''}> ${esc(c.name)}</label>`).join('')
   : `<p class="err">No printer found on this PC.</p><p class="hint">Connect the printer and install its driver in Windows (Settings → Bluetooth &amp; devices → Printers &amp; scanners). It then appears here by itself.</p>`;
 const bindPick = (name) => document.querySelectorAll(`input[name="${name}"]`).forEach(i => i.addEventListener('change', e => { pick = e.target.value; }));
 async function render(force) {

@@ -95,6 +95,7 @@ export const PRINT_ERRORS: Record<string, string> = {
   printer_not_selected: "The printer PC refused this slip because it is not the printer approved for that PC. Check Settings → Printing, then print again.",
   pc_replaced: "The printer PC was replaced by a new PC before this slip printed. Print it again if needed.",
   pc_paired_again: "The printer PC was paired again before this slip printed. Print it again if needed.",
+  paper_width_exceeds_printer: "The slip layout is wider than the printer can physically take (e.g. 297 mm layout on a 216 mm printer). Adjust the paper width in Settings → Ticket design, then reprint.",
 };
 export function PrintBadge({ status }: { status?: string | null }) {
   if (!status) return <span className="badge bg-slate-100 text-slate-600">No print job</span>;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ENVIRONMENTS, PRINTER_MODELS, environmentFor, getModel, matchPrinterModel, isPdfPrinter, isVirtualPrinter, modelsByMake, partsLabel } from "./printers";
+import { ENVIRONMENTS, PRINTER_MODELS, environmentFor, getModel, matchPrinterModel, isPdfPrinter, isVirtualPrinter, modelsByMake, partsLabel, maxPrintableWidthMm } from "./printers";
 
 describe("printer catalog", () => {
   it("has unique keys and a family environment for every model", () => {
@@ -51,10 +51,25 @@ describe("Canon MF3010 / laser family", () => {
 });
 
 describe("virtual printers", () => {
-  it("hides printers that never put paper out, keeps real and PDF printers", () => {
-    for (const n of ["Send To OneNote 2010", "OneNote (Desktop)", "OneNote for Windows 10", "Microsoft XPS Document Writer", "Fax", "Print to file"]) expect(isVirtualPrinter(n)).toBe(true);
-    for (const n of ["Canon MF3010", "EPSON L8050 Series", "iR(2)", "HP DJ 2130 series", "Microsoft Print to PDF", "Epson LX-310 (fax room)"]) expect(isVirtualPrinter(n)).toBe(false);
+  it("hides printers that never put paper out including OneNote and PDF printers", () => {
+    for (const n of ["Send To OneNote 2010", "OneNote (Desktop)", "OneNote for Windows 10", "Microsoft XPS Document Writer", "Fax", "Print to file", "Microsoft Print to PDF"]) {
+      expect(isVirtualPrinter(n)).toBe(true);
+    }
+    for (const n of ["Canon MF3010", "EPSON L8050 Series", "iR(2)", "HP DJ 2130 series", "Epson LX-310 (fax room)"]) {
+      expect(isVirtualPrinter(n)).toBe(false);
+    }
     expect(isPdfPrinter("Microsoft Print to PDF")).toBe(true);
     expect(isPdfPrinter("Canon MF3010")).toBe(false);
   });
 });
+
+describe("maxPrintableWidthMm", () => {
+  it("returns correct maximum widths for 80-col, 136-col, laser and thermal", () => {
+    expect(maxPrintableWidthMm(getModel("epson-lx-310"))).toBe(216);
+    expect(maxPrintableWidthMm(getModel("epson-lq-2190"))).toBe(381);
+    expect(maxPrintableWidthMm(getModel("canon-mf3010"))).toBe(216);
+    expect(maxPrintableWidthMm(getModel("tvs-rp3160"))).toBe(80);
+    expect(maxPrintableWidthMm(null)).toBe(216);
+  });
+});
+
