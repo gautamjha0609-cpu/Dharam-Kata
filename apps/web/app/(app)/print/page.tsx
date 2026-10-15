@@ -8,6 +8,7 @@ import { friendlyError } from "@/lib/errors";
 import { fmtDateTime } from "@/lib/format";
 import { Alert, Empty, PageHead, PrintBadge, PRINT_ERRORS } from "@/components/ui";
 import { useLive } from "@/lib/use-live";
+import { WAIT_ALERT_MS, retryPrint } from "@/components/print-status";
 
 interface Job { id: string; invoice_id: string; job_type: string; status: string; attempt_count: number; last_error_code: string | null; queued_at: string; reprint_reason: string | null }
 interface Agent { id: string; label: string; status: string; app_version: string | null; last_heartbeat_at: string | null }
@@ -32,6 +33,16 @@ export default function PrintCentre() {
   useLive(load, ["print_jobs"], { staleMs: 30_000 });
   // printer PCs report in about every minute (no realtime for that): refresh their status once a minute, and only while this tab is in front
   useEffect(() => { const t = setInterval(() => { if (!document.hidden) void load(); }, 60_000); return () => clearInterval(t); }, [load]);
+
+  const [busy, setBusy] = useState<string | null>(null);
+  async function again(j: Job) {
+    if (!org) return;
+    setBusy(j.id); setErr(null);
+    const e = await retryPrint(org.organization_id, j.id);
+    setBusy(null); if (e) setErr(e);
+    void load();
+  }
+  const canRetry = (j: Job) => !!j.invoice_id && (["failed", "routing_error", "not_configured"].includes(j.status) || (j.status === "queued" && Date.now() - new Date(j.queued_at).getTime() > WAIT_ALERT_MS));
 
   const online = (a: Agent) => a.status === "active" && a.last_heartbeat_at && Date.now() - new Date(a.last_heartbeat_at).getTime() < 90_000;
 
@@ -62,7 +73,8 @@ export default function PrintCentre() {
                 {j.last_error_code && <span className="block text-xs text-red-700">{PRINT_ERRORS[j.last_error_code] ?? j.last_error_code}</span>}
                 {j.reprint_reason && <span className="text-slate-600"> · “{j.reprint_reason}”</span>}
               </div>
-              <PrintBadge status={j.status} />
+              <span className="flex flex-wrap items-center gap-2"><PrintBadge status={j.status} />
+                {canRetry(j) && <button type="button" className="btn-primary !min-h-[36px]" disabled={busy === j.id} onClick={() => void again(j)}>{busy === j.id ? "Sending…" : "Print again"}</button>}</span>
             </li>
           ))}
         </ul>

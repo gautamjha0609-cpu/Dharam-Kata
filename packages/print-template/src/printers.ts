@@ -135,3 +135,8 @@ export function modelsByMake(): [string, PrinterModel[]][] {
 }
 
 export const partsLabel = (p?: PrinterModel) => (p?.parts ? `1 + ${p.parts - 1} copies (carbon)` : "copies: not confirmed");
+
+/** Windows "printers" that never put paper out (OneNote, Fax, XPS writer, Print to file). They are hidden when a printer is set up. */
+export const isVirtualPrinter = (windowsName: string) => /onenote|send to|^fax\b|xps document writer|print to file/i.test(windowsName) && !isPdfPrinter(windowsName);
+/** PDF printers only save a file (kept for clients who want a PDF copy); shown with a "no paper" warning. */
+export const isPdfPrinter = (windowsName: string) => /\bpdf\b/i.test(windowsName);

@@ -12,6 +12,7 @@ import { Alert, Modal, PageHead, PrintBadge } from "@/components/ui";
 import { PartyPicker } from "@/components/party-picker";
 import { TicketPreview, previewValues, useReceipt } from "@/components/receipt";
 import { ExtraInputs, extraPayload, extraProblem, useCustomFields } from "@/components/custom-fields";
+import { PrintFollow, PrintTarget, WaitingSlips, useSitePrintStatus } from "@/components/print-status";
 import type { Invoice, PrintJob } from "@/lib/types";
 
 /** What find_open_entry returns for a vehicle that was weighed once and has not come back yet. */
@@ -202,18 +203,9 @@ export default function WeighmentPage() {
     resetForm();
   }
 
-  // follow the print job of the slip we just sent (a few quick checks; the Print centre has the full history)
-  useEffect(() => {
-    if (!done?.job || ["submitted_to_spooler", "failed", "not_configured", "routing_error", "unknown"].includes(done.job.status)) return;
-    let n = 0;
-    const t = setInterval(async () => {
-      n += 1;
-      const { data } = await supabase().from("print_jobs").select("*").eq("id", done.job!.id).maybeSingle();
-      if (data) setDone((d) => (d ? { ...d, job: data as PrintJob } : d));
-      if (n >= 10) clearInterval(t);
-    }, 3000);
-    return () => clearInterval(t);
-  }, [done?.job?.id, done?.job?.status]);
+  // the slip we just sent: PrintFollow polls it, shows "Print successful" and offers "Print again" after 2 minutes
+  const onJob = useCallback((j: PrintJob) => setDone((d) => (d ? { ...d, job: j } : d)), []);
+  const print = useSitePrintStatus(siteId);
 
   if (!can("weighment.create")) return <Alert kind="warn">You do not have permission to create weighments.</Alert>;
   if (mySites.length === 0) return <Alert kind="warn">You are not assigned to any site yet. Ask your administrator.</Alert>;
@@ -234,8 +226,13 @@ export default function WeighmentPage() {
           {(done.job?.status === "not_configured" || done.job?.status === "routing_error") && (
             <Alert kind="warn">Saved, but no printer is set up for this site. {can("print.route.manage") ? <Link className="underline" href="/settings">Set up a printer</Link> : "Ask your administrator."}</Alert>
           )}
+          <PrintFollow job={done.job} printer={print.status?.printer ? `${print.status.printer.label} (${print.status.printer.pc})` : null} onJob={onJob} />
         </div>
       )}
+      <div className="mb-4 space-y-2">
+        <PrintTarget status={print.status} />
+        <WaitingSlips status={{ printer: print.status?.printer ?? null, waiting: (print.status?.waiting ?? []).filter((w) => w.invoice_id !== done?.inv.id) }} reload={print.reload} />
+      </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <form onSubmit={submit} className="card space-y-4" noValidate>
           {error && <Alert>{error}</Alert>}

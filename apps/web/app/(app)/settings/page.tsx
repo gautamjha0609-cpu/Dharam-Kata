@@ -10,7 +10,7 @@ import { formatInvoiceNumber } from "@dk/domain";
 import { Alert, PageHead } from "@/components/ui";
 import { TicketPreview, previewValues, useReceipt } from "@/components/receipt";
 import { PrinterModelPicker } from "@/components/printer-model";
-import { environmentFor, getModel, matchPrinterModel } from "@dk/print-template";
+import { environmentFor, getModel, isPdfPrinter, isVirtualPrinter, matchPrinterModel } from "@dk/print-template";
 
 export default function SettingsPage() {
   const { can } = useApp();
@@ -159,7 +159,7 @@ function PrintingCard() {
   }
   async function bind(agent: AgentRow, name: string) {
     if (!org) return;
-    const key = pick[name] ?? matchPrinterModel(name)?.key ?? "";
+    const key = pick[`${agent.id}:${name}`] ?? matchPrinterModel(name)?.key ?? "";
     if (!key) return setMsg({ k: "warn" as "error", t: "Choose the printer make & model first. It sets the right environment for this printer." });
     const paper = environmentFor(getModel(key)).defaultPaper;
     const { data, error } = await supabase().rpc("bind_printer", { p_org: org.organization_id, p_agent: agent.id, p_os_name: name, p_label: name, p_w: paper.w, p_h: paper.h, p_set_default_route: true });
@@ -203,9 +203,13 @@ function PrintingCard() {
           {a.status === "active" && (
             <div className="mt-3 space-y-2">
               {printers.filter((p) => p.agent_id === a.id).map((p) => <PrinterEditor key={p.id} p={p} onSave={calibrate} onModel={async (k) => { const r = await applyModel(p.id, k); setMsg(r?.error ? { k: "error", t: friendlyError(r.error) } : { k: "ok", t: "Environment saved for this printer." }); void load(); }} status={(a.printers_seen ?? []).find((s) => s.name === p.os_printer_name)?.status} />)}
-              {(a.printers_seen ?? []).filter((s) => !printers.some((p) => p.agent_id === a.id && p.os_printer_name === s.name)).map((s) => (
-                <div key={s.name} className="space-y-2 rounded-lg border border-dashed border-slate-300 p-3 text-sm"><PrinterModelPicker id={`m-${s.name}`} value={pick[s.name] ?? matchPrinterModel(s.name)?.key ?? ""} onChange={(k) => setPick({ ...pick, [s.name]: k })} />{matchPrinterModel(s.name) && !pick[s.name] && <p className="text-xs text-green-800">✓ Model detected automatically from the Windows printer name.</p>}<div className="flex flex-wrap items-center justify-between gap-2"><span>Found: <b>{s.name}</b> {s.status && s.status !== "ready" && <span className="badge bg-amber-100 text-amber-900">⚠ {s.status.replaceAll("_", " ")}</span>}</span><button className="btn-ghost !min-h-[36px]" onClick={() => bind(a, s.name)}>Use for {sites.find((x) => x.id === a.site_id)?.name}</button></div></div>
-              ))}
+              {(a.printers_seen ?? []).filter((s) => !isVirtualPrinter(s.name) && !printers.some((p) => p.agent_id === a.id && p.os_printer_name === s.name)).map((s) => {
+                const k = `${a.id}:${s.name}`; // the same printer name can exist on two PCs
+                return (
+                  <div key={s.name} className="space-y-2 rounded-lg border border-dashed border-slate-300 p-3 text-sm"><PrinterModelPicker id={`m-${a.id}-${s.name}`} value={pick[k] ?? matchPrinterModel(s.name)?.key ?? ""} onChange={(v) => setPick({ ...pick, [k]: v })} />{matchPrinterModel(s.name) && !pick[k] && <p className="text-xs text-green-800">✓ Model detected automatically from the Windows printer name.</p>}{isPdfPrinter(s.name) && <p className="text-xs text-amber-900">⚠ This only saves a PDF file on the PC. No paper comes out.</p>}<div className="flex flex-wrap items-center justify-between gap-2"><span>Found: <b>{s.name}</b> {s.status && s.status !== "ready" && <span className="badge bg-amber-100 text-amber-900">⚠ {s.status.replaceAll("_", " ")}</span>}</span><button className="btn-ghost !min-h-[36px]" onClick={() => bind(a, s.name)}>Use for {sites.find((x) => x.id === a.site_id)?.name}</button></div></div>
+                );
+              })}
+              {(a.printers_seen ?? []).length > 0 && (a.printers_seen ?? []).every((s) => isVirtualPrinter(s.name) || isPdfPrinter(s.name)) && <Alert kind="warn">No real printer found on this PC (only OneNote, Fax, XPS or PDF). Connect the printer to this PC and install its Windows driver, or use another PC.</Alert>}
             </div>
           )}
         </div>
@@ -257,6 +261,8 @@ function PrinterEditor({ p, onSave, onModel, status }: { p: PrinterRow; onSave: 
   return (
     <div className="rounded-lg bg-slate-50 p-3 text-sm">
       <p className="font-semibold">{p.os_printer_name} <span className="font-normal text-slate-600">· paper {num(p.paper_w_mm, 1)}×{num(p.paper_h_mm, 1)} mm</span> {status && (status === "ready" ? <span className="badge bg-green-100 text-green-800">✓ Ready</span> : <span className="badge bg-amber-100 text-amber-900">⚠ {status.replaceAll("_", " ")}</span>)}</p>
+      {isVirtualPrinter(p.os_printer_name) && <p className="mt-1 text-sm font-medium text-red-700">✕ “{p.os_printer_name}” is not a real printer. No paper comes out. Choose a real printer for this site, or remove this PC.</p>}
+      {isPdfPrinter(p.os_printer_name) && <p className="mt-1 text-xs text-amber-900">⚠ Saves a PDF file on the PC only. No paper comes out.</p>}
       <div className="mt-2 flex flex-wrap items-end gap-3">
         <div><label className="label" htmlFor={`x${p.id}`}>X offset (mm)</label><input id={`x${p.id}`} className="field !w-28" inputMode="decimal" value={x} onChange={(e) => setX(e.target.value)} /></div>
         <div><label className="label" htmlFor={`y${p.id}`}>Y offset (mm)</label><input id={`y${p.id}`} className="field !w-28" inputMode="decimal" value={y} onChange={(e) => setY(e.target.value)} /></div>
