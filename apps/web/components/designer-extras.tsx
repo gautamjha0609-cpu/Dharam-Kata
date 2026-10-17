@@ -11,12 +11,17 @@ const Num = ({ label, v, on, step = 0.5, min }: { label: string; v: number; on: 
   </div>
 );
 
-/** Copies per invoice. (The "DUPLICATE" mark on reprints has a fixed place and needs no settings.) */
+/** Default copies for the opening and the closing slip. (The "DUPLICATE" mark on reprints has a fixed place and needs no settings.) */
 export function ModeCard({ layout, setLayout }: { layout: Layout; setLayout: SetLayout }) {
+  const clamp = (n: number) => Math.max(1, Math.min(5, Math.round(n) || 1));
   return (
     <div className="card mt-4 space-y-3">
       <h2 className="font-bold text-navy">Copies</h2>
-      <Num label="Copies printed per invoice (1–5)" v={layout.copies} step={1} min={1} on={(n) => setLayout((l) => ({ ...l, copies: Math.max(1, Math.min(5, Math.round(n) || 1)) }))} />
+      <div className="grid grid-cols-2 gap-3">
+        <Num label="Opening slip (1–5)" v={layout.copiesOpening ?? layout.copies} step={1} min={1} on={(n) => setLayout((l) => ({ ...l, copiesOpening: clamp(n) }))} />
+        <Num label="Closing slip (1–5)" v={layout.copiesClosing ?? layout.copies} step={1} min={1} on={(n) => setLayout((l) => ({ ...l, copiesClosing: clamp(n) }))} />
+      </div>
+      <p className="text-xs text-slate-600">Default copies for every entry. For one entry only, change it with “Copies” on the weighment screen; these defaults stay as they are.</p>
       <p className="text-xs text-slate-600">A reprint of an invoice is automatically marked “DUPLICATE” in a fixed place; the original invoice number and amounts never change.</p>
     </div>
   );

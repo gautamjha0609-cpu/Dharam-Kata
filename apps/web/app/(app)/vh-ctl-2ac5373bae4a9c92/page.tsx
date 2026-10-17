@@ -105,7 +105,7 @@ export default function PlatformAdminPage() {
 
   return (
     <div className="space-y-5">
-      <PageHead title="Platform admin" sub="Client firms (tenants). Each firm's data is fully separate. Each firm's service runs one year at a time." actions={<Link href={ADMIN_PATH + "/communication"} className="btn-navy">📣 Communication</Link>} />
+      <PageHead title="Platform admin" sub="Client firms (tenants). Each firm's data is fully separate. Each firm's service runs one year at a time." actions={<div className="flex flex-wrap gap-2"><Link href={ADMIN_PATH + "/reports"} className="btn-navy">📊 Reports</Link><Link href={ADMIN_PATH + "/printers"} className="btn-navy">🖨 Printer PCs</Link><Link href={ADMIN_PATH + "/communication"} className="btn-navy">📣 Communication</Link></div>} />
       {msg && <Alert kind={msg.k}>{msg.t}</Alert>}
 
       <section className="card space-y-3">
@@ -245,9 +245,23 @@ function EditFirm({ org, onClose, onSaved }: { org: Org | null; onClose: () => v
 
 interface Member { user_id: string; login_id: string; full_name: string; role: string; status: string }
 
-/** Platform admin: set any user's password / login ID (the only way credentials change). The list comes straight from the database: one fast call. */
+/** A strong password the admin can accept or change (letters + digits, no look-alike characters). */
+function suggestPassword() {
+  const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789", a = new Uint32Array(12);
+  crypto.getRandomValues(a);
+  const p = Array.from(a, (n) => chars[n % chars.length]).join("");
+  return /[0-9]/.test(p) && /[A-Za-z]/.test(p) ? p : p.slice(0, 11) + "7";
+}
+
+/**
+ * Platform admin: firm users' login IDs, set a new password / login ID (the only way credentials change), and "Open as this user"
+ * (sign in as that user without a password; never blocked by the 2-device limit). Passwords are never stored readable, so they
+ * cannot be shown; a new one is shown once when you set it. The list comes straight from the database: one fast call.
+ */
 function FirmUsers({ orgId, onMsg }: { orgId: string; onMsg: (m: Msg) => void }) {
   const [members, setMembers] = useState<Member[] | null>(null);
+  const [openLink, setOpenLink] = useState<{ url: string; who: string } | null>(null);
+  const [opening, setOpening] = useState<string | null>(null);
   const load = useCallback(async () => {
     const { data } = await supabase().rpc("platform_list_members", { p_org: orgId });
     setMembers((data ?? []) as unknown as Member[]);
@@ -256,25 +270,46 @@ function FirmUsers({ orgId, onMsg }: { orgId: string; onMsg: (m: Msg) => void })
 
   async function act(user_id: string, kind: "set_password" | "set_login") {
     const body: Record<string, unknown> = { organization_id: orgId, user_id, kind };
-    if (kind === "set_password") { const p = prompt("New password (min 10 characters, letters and numbers):"); if (!p) return; body.password = p; }
+    if (kind === "set_password") { const p = prompt("New password (min 10 characters, letters and numbers). A strong one is filled in; copy it now, it is not shown again:", suggestPassword()); if (!p) return; body.password = p; }
     else { const l = prompt("New login ID (lowercase letters, digits, . _ -):"); if (!l) return; body.login_id = l.trim().toLowerCase(); }
     const res = await fetch("/api/v1/users/action", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const j = await res.json().catch(() => ({}));
-    onMsg(res.ok ? { k: "ok", t: kind === "set_password" ? "Password set." : "Login ID changed." } : { k: "error", t: j?.error?.message ?? "Failed." });
+    onMsg(res.ok ? { k: "ok", t: kind === "set_password" ? `Password set: ${String(body.password)} (shown only now; give it to the user).` : "Login ID changed." } : { k: "error", t: j?.error?.message ?? "Failed." });
     void load();
+  }
+  async function openAs(m: Member) {
+    setOpening(m.user_id);
+    const res = await fetch("/api/v1/admin/open-as", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ organization_id: orgId, user_id: m.user_id }) });
+    const j = await res.json().catch(() => ({}));
+    setOpening(null);
+    if (!res.ok) return onMsg({ k: "error", t: j?.error?.message ?? "Could not open the firm." });
+    setOpenLink({ url: new URL(j.data.url, window.location.origin).toString(), who: m.full_name || m.login_id });
   }
   if (!members) return <div className="mt-3 space-y-2 border-t border-slate-100 pt-3" aria-busy="true"><div className="skeleton h-5 w-2/3" /><div className="skeleton h-5 w-1/2" /></div>;
   return (
+    <>
     <ul className="mt-3 divide-y divide-slate-100 border-t border-slate-100 text-sm">
       {members.map((m) => (
         <li key={m.user_id} className="flex flex-wrap items-center justify-between gap-2 py-2">
           <span><b>{m.full_name || m.login_id}</b> <span className="text-slate-600">({m.login_id}) · {m.role}{m.status === "disabled" ? " · disabled" : ""}</span></span>
-          <span className="flex gap-2">
+          <span className="flex flex-wrap gap-2">
+            <button className="btn-primary !min-h-[36px]" disabled={opening === m.user_id || m.status === "disabled"} onClick={() => void openAs(m)}>{opening === m.user_id ? "Opening…" : "Open as this user"}</button>
             <button className="btn-ghost !min-h-[36px]" onClick={() => void act(m.user_id, "set_login")}>Change login ID</button>
             <button className="btn-ghost !min-h-[36px]" onClick={() => void act(m.user_id, "set_password")}>Set password</button>
           </span>
         </li>
       ))}
     </ul>
+      <Modal open={!!openLink} onClose={() => setOpenLink(null)} title={`Open as ${openLink?.who ?? ""}`}>
+        {openLink && (
+          <div className="space-y-3 text-sm">
+            <p>This signs in as <b>{openLink.who}</b> without a password. The 2-device limit does not apply and none of the user&apos;s devices are signed out. The link works once, for a short time, and is recorded in the audit log.</p>
+            <p className="text-xs text-slate-600">“Open here” leaves your admin login in this browser (sign in again afterwards). To keep both, copy the link and open it in a private / incognito window.</p>
+            <a className="btn-primary w-full" href={openLink.url}>Open here</a>
+            <button type="button" className="btn-ghost w-full" onClick={() => { void navigator.clipboard.writeText(openLink.url); onMsg({ k: "ok", t: "Link copied. Paste it in a private / incognito window." }); setOpenLink(null); }}>Copy link for a private window</button>
+          </div>
+        )}
+      </Modal>
+    </>
   );
 }

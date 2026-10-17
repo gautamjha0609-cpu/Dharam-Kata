@@ -28,7 +28,13 @@ export default function SettingsPage() {
           <Link href="/settings/template" className="btn-navy">Open layout designer</Link>
         </section>
       )}
-      {can("print.route.manage") ? <PrintingCard /> : can("agent.remove") && <PairedPcsCard />}
+      {can("print.route.manage") ? <PrintingCard /> : (
+        <>
+          {/* a new printer PC needs a firm user's approval too (plus the platform admin's) */}
+          <AgentRequests />
+          {can("agent.remove") && <PairedPcsCard />}
+        </>
+      )}
       {can("user.manage") ? <UsersCard /> : <section className="card"><h2 className="font-bold text-navy">Users</h2><p className="text-sm text-slate-600">Users, logins and passwords are created and managed only by the platform administrator (The Valuation House). Contact them to add an operator or change a password.</p></section>}
     </div>
   );

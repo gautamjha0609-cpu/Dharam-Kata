@@ -70,6 +70,7 @@ export default function WeighmentPage() {
   const [manual, setManual] = useState(false);
   const [at, setAt] = useState(nowIstLocal());
   const [reason, setReason] = useState("");
+  const [copies, setCopies] = useState(""); // "" = the layout's default; a number = this slip only
   const [now, setNow] = useState(() => new Date().toISOString());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +90,7 @@ export default function WeighmentPage() {
 
   function resetForm(keepVehicle = false) {
     setEntries(null); setDues(null); setChoice(null); setPopup(false); setWeight(""); setAmount(""); setMode("cash"); setPartyId(null); setPartyName(""); setPaid("");
-    setMaterial(""); setNotes(""); setExtra({}); setManual(false); setReason(""); setError(null); setAt(nowIstLocal());
+    setMaterial(""); setNotes(""); setExtra({}); setManual(false); setReason(""); setCopies(""); setError(null); setAt(nowIstLocal());
     if (!keepVehicle) setVehicle("");
     idem.current = newIdemKey();
   }
@@ -173,6 +174,11 @@ export default function WeighmentPage() {
     const problem = extraProblem(custom.active, receipt.has, receipt.required, extra);
     if (problem) return setError(problem);
     setBusy(true);
+    // "Copies" changed for this slip only: stored under this save's idempotency key, used once by its print job
+    if (copies) {
+      const { error: cErr } = await supabase().rpc("set_slip_copies", { p_org: org.organization_id, p_idem: idem.current, p_copies: Number(copies) });
+      if (cErr) { setBusy(false); return setError(friendlyError(cErr)); }
+    }
     const common = {
       p_amount: a, p_payment_mode: mode, p_party: (mode === "credit" ? partyId : null) as unknown as string,
       p_material: (askMaterial && material ? material : null) as unknown as string, p_notes: (askNotes && notes ? notes : null) as unknown as string,
@@ -212,6 +218,7 @@ export default function WeighmentPage() {
 
   const ready = choice !== null;
   const closing = choice === "close" && !!entry;
+  const defaultCopies = (closing ? receipt.layout.copiesClosing : receipt.layout.copiesOpening) ?? receipt.layout.copies;
   return (
     <div className="mx-auto max-w-5xl">
       <PageHead title="Weighment" sub="Type the vehicle number and press Check vehicle. The system finds out whether this is a new entry or the closing of an open one." />
@@ -345,6 +352,15 @@ export default function WeighmentPage() {
                   </div>
                 )}
               </div>
+              {/* copies of THIS slip only (quiet: rarely needed); needs a published layout, which carries the copies */}
+              {receipt.published && <div className="flex items-center justify-end gap-1 text-xs text-slate-600">
+                <label htmlFor="copies">Copies</label>
+                <select id="copies" className="cursor-pointer rounded border-0 bg-transparent py-0.5 pl-1 pr-5 text-xs text-slate-700 underline decoration-dotted underline-offset-2 focus:ring-1 focus:ring-brand"
+                  value={copies} onChange={(e) => setCopies(e.target.value)} aria-label="Copies of this slip">
+                  <option value="">{defaultCopies} (default)</option>
+                  {[1, 2, 3, 4, 5].map((n) => <option key={n} value={String(n)}>{n}{n === defaultCopies ? " (default)" : ""} — this slip only</option>)}
+                </select>
+              </div>}
               <button className="btn-primary w-full" disabled={busy || !org || !weight || amount === "" || !!weightErr || paidTooMuch}>
                 {busy ? "Saving…" : closing ? "Close entry & print closing slip" : "Save & print opening slip"}
               </button>

@@ -129,6 +129,10 @@ export const LayoutSchema = z
     decor: z.array(DecorSchema).max(80).default([]),
     /** Identical copies printed per invoice (e.g. customer + office). */
     copies: z.number().int().min(1).max(5).default(1),
+    /** Copies of the OPENING slip (first weight) and of the CLOSING slip; when not set, `copies` is used. The server writes the
+     *  right number into each print job, so every Print Agent version prints it. */
+    copiesOpening: z.number().int().min(1).max(5).optional(),
+    copiesClosing: z.number().int().min(1).max(5).optional(),
     reprintMark: ReprintMarkSchema.optional(),
   })
   .superRefine((l, ctx) => {

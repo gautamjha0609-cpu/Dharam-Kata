@@ -11,12 +11,14 @@ interface AgentRequest {
   id: string; kind: "takeover" | "change_printer"; printer: string | null; requested_at: string;
   site_id: string; site: string; agent_id: string; pc: string; pc_last_seen: string | null; current_printer: string | null;
   old_pcs: { id: string; label: string; last_seen: string | null }[]; waiting: number;
+  firm_approved_at?: string | null; platform_approved_at?: string | null;
 }
 
 /**
- * Owner / administrator approvals asked for by a Print Agent:
- *  - a new PC wants to print for a site that already has a PC (one PC per site; the old PC is removed on approval)
- *  - a PC wants to change its printer
+ * Approvals asked for by a Print Agent:
+ *  - a new PC (desktop change) wants to print for a site that already has a PC: needs TWO approvals, any firm user of that site here
+ *    AND the platform administrator; the old PC is removed when both have approved
+ *  - a PC wants to change its printer (owner / administrator)
  */
 export function AgentRequests({ onChange }: { onChange?: () => void }) {
   const { org } = useApp();
@@ -40,7 +42,9 @@ export function AgentRequests({ onChange }: { onChange?: () => void }) {
     setBusy(null);
     if (error) setMsg({ k: "error", t: friendlyError(error) });
     else if (!approve) setMsg({ k: "ok", t: "Request rejected." });
-    else if (r.kind === "takeover") {
+    else if (r.kind === "takeover" && (data as { waiting_for?: string } | null)?.waiting_for === "platform") {
+      setMsg({ k: "ok", t: `Your approval for “${r.pc}” is saved. It switches over as soon as the platform administrator (The Valuation House) also approves.` });
+    } else if (r.kind === "takeover") {
       const moved = (data as { moved?: number } | null)?.moved ?? 0;
       setMsg({ k: "ok", t: `“${r.pc}” now prints for ${r.site}${r.printer ? ` on ${r.printer}` : ""}.${r.old_pcs.length ? ` ${r.old_pcs.map((o) => o.label).join(", ")} removed.` : ""}${moved ? ` ${moved} waiting slip${moved === 1 ? "" : "s"} moved to it.` : ""} Print the calibration sheet from the Print Agent.` });
     } else setMsg({ k: "ok", t: `“${r.pc}” now prints on ${r.printer}. Print the calibration sheet from the Print Agent and check X/Y.` });
@@ -62,6 +66,7 @@ export function AgentRequests({ onChange }: { onChange?: () => void }) {
               <p className="font-semibold">“{r.pc}” wants to print slips for {r.site}</p>
               <p className="mt-1">Printer: <b>{r.printer ?? "not chosen yet (older Print Agent)"}</b> · asked {fmtDateTime(r.requested_at)}</p>
               {r.old_pcs.length > 0 && <p className="mt-1">Approving removes {r.old_pcs.map((o) => <span key={o.id}><b>{o.label}</b> (last seen {o.last_seen ? fmtDateTime(o.last_seen) : "never"}) </span>)}— only one PC prints per site. It works even if that PC is switched off or lost.</p>}
+              <p className="mt-1 text-xs">Needs 2 approvals: <b>{r.firm_approved_at ? "✓ firm" : "○ firm (any user)"}</b> · <b>{r.platform_approved_at ? "✓ platform admin" : "○ platform admin"}</b></p>
             </>
           ) : (
             <>
@@ -71,7 +76,9 @@ export function AgentRequests({ onChange }: { onChange?: () => void }) {
           )}
           {r.printer && isVirtualPrinter(r.printer) && <p className="mt-1 font-medium text-red-700">✕ “{r.printer}” is not a real printer. No paper would come out.</p>}
           <div className="mt-2 flex flex-wrap gap-2">
-            <button type="button" className="btn-primary !min-h-[40px]" disabled={busy === r.id} onClick={() => approve(r)}>{busy === r.id ? "Working…" : "Approve"}</button>
+            {r.kind === "takeover" && r.firm_approved_at
+              ? <span className="badge bg-sky-100 text-sky-900">Approved by your firm · waiting for the platform admin</span>
+              : <button type="button" className="btn-primary !min-h-[40px]" disabled={busy === r.id} onClick={() => approve(r)}>{busy === r.id ? "Working…" : "Approve"}</button>}
             <button type="button" className="btn-ghost !min-h-[40px]" disabled={busy === r.id} onClick={() => void decide(r, false)}>Reject</button>
           </div>
         </div>
