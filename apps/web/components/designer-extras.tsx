@@ -11,7 +11,7 @@ const Num = ({ label, v, on, step = 0.5, min }: { label: string; v: number; on: 
   </div>
 );
 
-/** Default copies for the opening and the closing slip. (The "DUPLICATE" mark on reprints has a fixed place and needs no settings.) */
+/** Default copies for the opening and the closing slip. Reprints print exactly like the original (no "DUPLICATE" mark); they are recorded in the system. */
 export function ModeCard({ layout, setLayout }: { layout: Layout; setLayout: SetLayout }) {
   const clamp = (n: number) => Math.max(1, Math.min(5, Math.round(n) || 1));
   return (
@@ -22,7 +22,7 @@ export function ModeCard({ layout, setLayout }: { layout: Layout; setLayout: Set
         <Num label="Closing slip (1–5)" v={layout.copiesClosing ?? layout.copies} step={1} min={1} on={(n) => setLayout((l) => ({ ...l, copiesClosing: clamp(n) }))} />
       </div>
       <p className="text-xs text-slate-600">Default copies for every entry. For one entry only, change it with “Copies” on the weighment screen; these defaults stay as they are.</p>
-      <p className="text-xs text-slate-600">A reprint of an invoice is automatically marked “DUPLICATE” in a fixed place; the original invoice number and amounts never change.</p>
+      <p className="text-xs text-slate-600">A reprint prints exactly like the original (no “DUPLICATE” on paper). Every reprint, with its reason, is still recorded in the invoice’s print history.</p>
     </div>
   );
 }
