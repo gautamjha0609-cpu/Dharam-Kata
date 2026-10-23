@@ -3,7 +3,7 @@ import { cpSync, mkdirSync } from "node:fs";
 
 mkdirSync("dist", { recursive: true });
 await build({
-  entryPoints: { main: "src/main.ts", preload: "src/preload.ts" },
+  entryPoints: { main: "src/main.ts", preload: "src/preload.ts", "scale-preload": "src/scale-preload.ts" },
   outdir: "dist",
   bundle: true,
   platform: "node",

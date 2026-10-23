@@ -1,5 +1,10 @@
 /** Maps stable DB/RPC error codes to operator-friendly messages. */
 const MESSAGES: Record<string, string> = {
+  scale_not_connected: "No weighing scale is set up on this site's printer PC. Type the weight, or set up the scale in the Print Agent.",
+  scale_pc_offline: "The printer PC with the scale is offline. Check that it is on and the Print Agent is running, or type the weight.",
+  weight_read_mismatch: "The weight was changed after it was read from the scale. Tap Detect weight again, or save it as a typed weight.",
+  weight_read_expired: "The scale reading is too old. Tap Detect weight again.",
+  weight_read_invalid: "This scale reading cannot be used (already used or not finished). Tap Detect weight again.",
   forbidden: "You do not have permission to do this.",
   printer_not_found: "That printer no longer exists. Pick another printer.",
   printer_unavailable: "That printer is switched off or its Print Agent is paused. Check the printer PC.",

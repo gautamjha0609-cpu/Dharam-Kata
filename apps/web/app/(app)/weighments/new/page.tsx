@@ -14,6 +14,7 @@ import { TicketPreview, previewValues, useReceipt } from "@/components/receipt";
 import { ExtraInputs, extraPayload, extraProblem, useCustomFields } from "@/components/custom-fields";
 import { PrintFollow, PrintTarget, WaitingSlips, useSitePrintStatus } from "@/components/print-status";
 import type { Invoice, PrintJob } from "@/lib/types";
+import { DetectWeight, type ScaleReading } from "@/components/scale-weight";
 
 /** What find_open_entry returns for a vehicle that was weighed once and has not come back yet. */
 interface OpenEntry {
@@ -59,6 +60,7 @@ export default function WeighmentPage() {
   const [popup, setPopup] = useState(false);
 
   const [weight, setWeight] = useState("");
+  const [scaleRead, setScaleRead] = useState<ScaleReading | null>(null); // the weight came from the scale (until the field is edited)
   const [amount, setAmount] = useState("");
   const [mode, setMode] = useState<"cash" | "credit">("cash");
   const [partyId, setPartyId] = useState<string | null>(null);
@@ -89,7 +91,7 @@ export default function WeighmentPage() {
   const entry = choice === "close" ? entries?.[0] ?? null : null;
 
   function resetForm(keepVehicle = false) {
-    setEntries(null); setDues(null); setChoice(null); setPopup(false); setWeight(""); setAmount(""); setMode("cash"); setPartyId(null); setPartyName(""); setPaid("");
+    setEntries(null); setDues(null); setChoice(null); setPopup(false); setWeight(""); setScaleRead(null); setAmount(""); setMode("cash"); setPartyId(null); setPartyName(""); setPaid("");
     setMaterial(""); setNotes(""); setExtra({}); setManual(false); setReason(""); setCopies(""); setError(null); setAt(nowIstLocal());
     if (!keepVehicle) setVehicle("");
     idem.current = newIdemKey();
@@ -186,6 +188,8 @@ export default function WeighmentPage() {
       p_time_mode: manual ? "manual" : "automatic", p_at: (manual ? istLocalToIso(at) : null) as unknown as string,
       p_reason: (manual ? reason : null) as unknown as string, p_idem: idem.current,
       p_amount_paid: (mode === "credit" && paid ? Number(paid) : null) as unknown as number,
+      // a weight read from the scale is checked by the server (same reading, not changed, not used before); a typed weight is saved as typed
+      p_weight_read: (scaleRead && scaleRead.kg === w ? scaleRead.id : null) as unknown as string,
     };
     const sb = supabase();
     const { data, error: err } = choice === "close" && entry
@@ -200,6 +204,7 @@ export default function WeighmentPage() {
         await check(vehicle);
         return setError(msg);
       }
+      if (/weight_read_/.test(String((err as { message?: string }).message ?? ""))) setScaleRead(null);
       return setError(friendlyError(err)); // the typed values stay on the form
     }
     const inv = (data as unknown as { invoice: Invoice }).invoice;
@@ -281,7 +286,12 @@ export default function WeighmentPage() {
 
               <div>
                 <label className="label" htmlFor="wt">{closing ? "Second weight (kg)" : "First weight (kg)"} <span className="text-red-600">*</span></label>
-                <input id="wt" className="field text-lg" inputMode="decimal" autoFocus value={weight} onChange={(e) => setWeight(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="e.g. 34210" />
+                <div className="flex flex-wrap gap-2">
+                  <input id="wt" className={`field min-w-0 flex-1 text-lg ${scaleRead ? "!border-green-600 !bg-green-50" : ""}`} inputMode="decimal" autoFocus value={weight} placeholder="e.g. 34210"
+                    onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, ""); setWeight(v); if (scaleRead && Number(v) !== scaleRead.kg) setScaleRead(null); }} />
+                  <DetectWeight siteId={siteId} disabled={busy} onWeight={(r) => { setWeight(String(r.kg)); setScaleRead(r); }} />
+                </div>
+                {scaleRead && <p className="mt-1 text-sm font-medium text-green-800" aria-live="polite">✓ From the scale at {fmtDateTime(scaleRead.at)} (steady). Changing the number makes it a typed weight.</p>}
                 {closing ? (
                   <div className="mt-2 rounded-lg bg-slate-50 p-3 text-sm" aria-live="polite">
                     {weightErr ? <span className="text-red-700">{weightErr}</span> : res ? (

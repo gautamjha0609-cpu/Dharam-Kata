@@ -25,6 +25,8 @@ async function call<T>(base: string, path: string, init: RequestInit & { token?:
 }
 
 /** What the server says about this PC (returned with every heartbeat). */
+/** Where the server sends the "check now" signal for this PC (Supabase Realtime broadcast topic). */
+export interface Signal { url: string; key: string; topic: string }
 export interface AgentState { approval: string; printer: string | null; request: { kind: string; printer: string | null; at: string } | null }
 
 export async function pair(base: string, code: string, label: string, os: string, machineId: string, printer: string) {
@@ -37,8 +39,14 @@ export class HttpApi implements Api {
   async event(jobId: string, lease: string, status: EventStatus, errorCode?: string) {
     await call(this.base, `/api/v1/agent/jobs/${jobId}/events`, { method: "POST", token: this.token, body: JSON.stringify({ lease_token: lease, status, error_code: errorCode }) });
   }
-  heartbeat(version: string, os: string, printers: { name: string; status: string }[], machineId: string) {
-    return call<{ state?: AgentState | null }>(this.base, "/api/v1/agent/heartbeat", { method: "POST", token: this.token, body: JSON.stringify({ version, os, printers, machine_id: machineId }) });
+  heartbeat(version: string, os: string, printers: { name: string; status: string }[], machineId: string, scale?: Record<string, unknown> | null) {
+    return call<{ state?: AgentState | null; signal?: Signal | null }>(this.base, "/api/v1/agent/heartbeat", { method: "POST", token: this.token, body: JSON.stringify({ version, os, printers, machine_id: machineId, ...(scale ? { scale } : {}) }) });
+  }
+  /** The oldest "Detect weight" request from the website for this PC, or null. */
+  nextWeightRead() { return call<{ id: string } | null>(this.base, "/api/v1/agent/weight/next", { method: "POST", token: this.token, body: "{}" }); }
+  /** The answer: the steady weight in kg, or why there is none. */
+  async finishWeightRead(id: string, r: { ok: boolean; kg?: number; raw?: string; frames?: number; code?: string }) {
+    await call(this.base, `/api/v1/agent/weight/${id}`, { method: "POST", token: this.token, body: JSON.stringify({ ok: r.ok, weight_kg: r.kg ?? null, raw: r.raw ?? null, frames: r.frames ?? null, error_code: r.code ?? null }) });
   }
   /** "Change printer": the owner approves it on the website. */
   requestPrinter(printer: string) {

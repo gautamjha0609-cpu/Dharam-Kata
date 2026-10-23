@@ -9,11 +9,15 @@ import { HttpApi, HttpError, pair, type AgentState } from "./http-api";
 import { machineId, newSeed } from "./machine-id";
 import { logFilePath, logLine } from "./logger";
 import { FileJournal, clearToken, loadConfig, loadToken, saveConfig, saveToken } from "./store";
+import { ScaleManager, type ScaleConfig } from "./scale/manager";
+import { ScaleHost, helperFiles } from "./scale/links";
+import { PROTOCOLS, type ProtocolId } from "./scale/protocols";
 
 // Set at build time to your deployed website, e.g. https://dharam-kata.vercel.app (must be HTTPS in production).
 const DEFAULT_SERVER = process.env.DK_SERVER_URL || "https://dharam-kata.vercel.app";
 // pairing and settings live in one folder for ALL versions, so updating the agent never needs pairing again
-app.setPath("userData", join(app.getPath("appData"), "Dharam Kata Print Agent"));
+// (DK_USER_DATA: a separate folder for development tests only, so a test run never touches the real pairing)
+app.setPath("userData", process.env.DK_USER_DATA || join(app.getPath("appData"), "Dharam Kata Print Agent"));
 // the installer removes every older version, so only the newest is installed
 const APP_ID = `in.thevaluationhouse.dharamkata.printagent.v${app.getVersion().replace(/\./g, "-")}`;
 const PRODUCT = `Dharam Kata Print Agent ${app.getVersion()}`;
@@ -42,6 +46,16 @@ let api: HttpApi | null = null;
 let journal: FileJournal;
 let backup: DailyBackup;
 const defaultBackupDir = () => join(app.getPath("documents"), "DharamKata Backup");
+// the weighing scale (optional): read only when the website asks ("Detect weight"); the simulator exists only with DK_SCALE_SIM=1
+const SIM = process.env.DK_SCALE_SIM === "1";
+let scaleHost: ScaleHost | null = null;
+let scale: ScaleManager | null = null;
+let scalePorts: { name: string; label: string; usb: boolean; bluetooth: boolean }[] = [];
+let scaleDetect = { running: false, text: "", result: null as null | { ok: boolean; message: string; sample?: string } };
+let scaleTest: { at: string; ok: boolean; text: string } | null = null;
+// the window is told about scale changes at most 4 times a second (an indicator sends ~10 frames a second)
+let uiTimer: ReturnType<typeof setTimeout> | null = null;
+const uiChanged = () => { if (!uiTimer) uiTimer = setTimeout(() => { uiTimer = null; win?.webContents.send("state-changed"); }, 250); };
 const uiFile = (name: string) => join(__dirname, "ui", name);
 
 const note = (m: string) => {
@@ -109,8 +123,10 @@ async function heartbeat() {
   try {
     const withStatus = await printer.listWithStatus();
     state.printers = withStatus.map((p) => p.name);
-    const r = await api.heartbeat(app.getVersion(), `Windows ${release()}`, withStatus, await thisMachine());
+    const r = await api.heartbeat(app.getVersion(), `Windows ${release()}`, withStatus, await thisMachine(), scale?.summary() ?? null);
     applyState(r?.state);
+    // the "check now" signal is only needed while a scale is set up
+    scaleHost?.listen(scale?.config().enabled ? r?.signal ?? null : null, () => void checkWeights());
     state.connected = true; state.lastError = "";
   } catch (e) {
     state.connected = false;
@@ -120,8 +136,32 @@ async function heartbeat() {
   win?.webContents.send("state-changed");
 }
 
+/**
+ * Answers the website's "Detect weight" requests for this PC: reads the steady weight from the scale and sends it back.
+ * Triggered by the server's signal (within a second) and, as a fallback, by every 5-second poll.
+ */
+let weighing = false;
+async function checkWeights() {
+  if (!api || !scale || weighing || !scale.config().enabled) return;
+  weighing = true;
+  try {
+    for (let i = 0; i < 5; i++) {
+      const req = await api.nextWeightRead();
+      if (!req) break;
+      const r = await scale.read(8000);
+      await api.finishWeightRead(req.id, r.ok ? { ok: true, kg: r.kg, raw: r.raw, frames: r.frames } : { ok: false, code: r.code });
+      note(r.ok ? `Weight sent to the website: ${r.kg} kg` : `Weight not sent: ${r.message}`);
+    }
+  } catch (e) {
+    logLine(`weight request failed: ${describe(e)}`);
+  } finally {
+    weighing = false;
+  }
+}
+
 let busy = false;
 async function poll() {
+  void checkWeights();
   if (!core || busy) return;
   busy = true;
   try {
@@ -209,6 +249,14 @@ if (hasLock) {
     journal = new FileJournal();
     backup = new DailyBackup(loadConfig(DEFAULT_SERVER).backupDir || defaultBackupDir(), () => new Date(), note);
     setupAgent();
+    const helper = helperFiles(__dirname);
+    scaleHost = new ScaleHost(helper.preload, helper.page, note);
+    scale = new ScaleManager(scaleHost, uiChanged, (learned) => {
+      const c = loadConfig(DEFAULT_SERVER);
+      if (c.scale) saveConfig({ ...c, scale: { ...c.scale, ...learned } });
+    }, note);
+    const sc = loadConfig(DEFAULT_SERVER).scale;
+    if (sc?.enabled && (sc.source !== "sim" || SIM)) void scale.apply(sc);
     const hidden = process.argv.includes("--hidden") && !!loadToken(); // started with Windows and already paired: stay in the tray
     createWindow(!hidden);
     createTray();
@@ -246,7 +294,93 @@ ipcMain.handle("state", () => {
     approval: cfg.approval ?? "approved", printer: selected, request: cfg.request ?? null,
     printerMissing: !!selected && state.printers.length > 0 && !state.printers.includes(selected),
     printerVirtual: !!selected && isVirtualPrinter(selected),
+    scale: scaleState(),
   };
+});
+
+/** Everything the window shows about the scale. `live` changes many times a second and is updated in place. */
+function scaleState() {
+  const st = scale?.status();
+  const cfg = scale?.config() ?? { enabled: false, source: "serial" as const };
+  const s = st?.state;
+  const live = !st || !st.enabled ? null
+    : s?.kind === "stable" ? { kind: "stable", kg: s.kg }
+    : s?.kind === "moving" ? { kind: "moving", kg: s.kg }
+    : { kind: s?.kind ?? "no_data", kg: null };
+  return {
+    cfg, sim: SIM, ports: scalePorts, detect: scaleDetect, test: scaleTest,
+    protocols: (Object.keys(PROTOCOLS) as ProtocolId[]).map((id) => ({ id, name: PROTOCOLS[id].name, families: PROTOCOLS[id].families })),
+    status: st ? { link: st.link, error: st.error, protocol: st.protocol, port: st.port } : null,
+    live: live ? { ...live, frames: st!.frames, rejected: st!.rejected, raw: st!.lastRaw, lastDataAt: st!.lastDataAt } : null,
+  };
+}
+
+ipcMain.handle("scale-ports", async () => {
+  if (!scale) return { ok: false };
+  try { scalePorts = await scale.listPorts(); } catch (e) { note(`Could not list COM ports: ${describe(e)}`); }
+  return { ok: true, ports: scalePorts };
+});
+
+/** Saves the scale settings typed in the window (only known fields, checked). */
+ipcMain.handle("scale-save", async (_e, raw: Partial<ScaleConfig>) => {
+  if (!scale) return { ok: false, error: "Not ready" };
+  const source = raw.source === "tcp" ? "tcp" : raw.source === "sim" && SIM ? "sim" : "serial";
+  const cfg: ScaleConfig = {
+    enabled: !!raw.enabled, source,
+    port: typeof raw.port === "string" && /^COM\d{1,3}$/i.test(raw.port) ? raw.port.toUpperCase() : undefined,
+    baud: [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200].includes(Number(raw.baud)) ? Number(raw.baud) : 9600,
+    framing: raw.framing === "8E1" || raw.framing === "8O1" ? raw.framing : "8N1",
+    mask7: !!raw.mask7,
+    protocol: raw.protocol && (raw.protocol === "auto" || raw.protocol in PROTOCOLS) ? raw.protocol : "auto",
+    unit: raw.unit === "t" ? "t" : "kg",
+    host: typeof raw.host === "string" ? raw.host.trim().slice(0, 100) : undefined,
+    tcpPort: Number.isInteger(Number(raw.tcpPort)) && Number(raw.tcpPort) > 0 && Number(raw.tcpPort) < 65536 ? Number(raw.tcpPort) : undefined,
+    ask: !!raw.ask,
+  };
+  if (cfg.enabled && cfg.source === "serial" && !cfg.port) return { ok: false, error: "Choose the COM port the scale is connected to." };
+  if (cfg.enabled && cfg.source === "tcp" && (!cfg.host || !cfg.tcpPort)) return { ok: false, error: "Enter the scale's network address and port." };
+  saveConfig({ ...loadConfig(DEFAULT_SERVER), scale: cfg });
+  scaleTest = null;
+  await scale.apply(cfg);
+  note(cfg.enabled ? `Scale settings saved (${cfg.source === "serial" ? cfg.port : cfg.source === "tcp" ? `${cfg.host}:${cfg.tcpPort}` : "simulator"})` : "Scale turned off");
+  void heartbeat(); // the website learns at once whether Detect weight is available
+  return { ok: true };
+});
+
+/** Finds speed, framing and format of the indicator on a COM port by listening (and, only if allowed, by asking). */
+ipcMain.handle("scale-detect", async (_e, port: string, ask: boolean, unit: "kg" | "t") => {
+  if (!scale || scaleDetect.running) return { ok: false };
+  if (!/^COM\d{1,3}$/i.test(String(port))) return { ok: false, error: "Choose a COM port first." };
+  scaleDetect = { running: true, text: "Starting…", result: null };
+  uiChanged();
+  try {
+    const r = await scale.autoDetect(String(port).toUpperCase(), { ask: !!ask }, (text) => { scaleDetect.text = text; uiChanged(); });
+    if (r.ok) {
+      const cfg = { ...r.cfg, unit: unit === "t" ? "t" as const : "kg" as const };
+      saveConfig({ ...loadConfig(DEFAULT_SERVER), scale: cfg });
+      await scale.apply(cfg);
+      scaleDetect = { running: false, text: "", result: { ok: true, message: `Found: ${PROTOCOLS[cfg.protocol as ProtocolId].name}, ${cfg.baud} baud ${cfg.mask7 ? "7 data bits + parity" : cfg.framing}. Saved.` } };
+      note(`Scale found on ${cfg.port}: ${PROTOCOLS[cfg.protocol as ProtocolId].name}, ${cfg.baud} baud`);
+      void heartbeat();
+    } else {
+      scaleDetect = { running: false, text: "", result: { ok: false, message: r.message, sample: r.sample } };
+      const c = loadConfig(DEFAULT_SERVER).scale;
+      if (c?.enabled) await scale.apply(c);
+    }
+  } catch (e) {
+    scaleDetect = { running: false, text: "", result: { ok: false, message: describe(e) } };
+  }
+  uiChanged();
+  return { ok: true };
+});
+
+/** "Read weight now" button in the window: the same reading the website gets. */
+ipcMain.handle("scale-test", async () => {
+  if (!scale) return { ok: false };
+  const r = await scale.read(6000);
+  scaleTest = { at: new Date().toLocaleTimeString(), ok: r.ok, text: r.ok ? `${r.kg.toLocaleString("en-IN")} kg (steady, ${r.frames} identical readings)` : r.message };
+  uiChanged();
+  return { ok: true };
 });
 
 ipcMain.handle("pair", async (_e, code: string, label: string, printerName: string) => {

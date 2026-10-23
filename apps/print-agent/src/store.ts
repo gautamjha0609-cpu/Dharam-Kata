@@ -2,6 +2,7 @@ import { app, safeStorage } from "electron";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Journal, PendingAck } from "./core";
+import type { ScaleConfig } from "./scale/manager";
 
 const dir = () => {
   const d = app.getPath("userData");
@@ -32,6 +33,8 @@ export interface Config {
   request?: { kind: string; printer: string | null } | null;
   /** fallback machine id when Windows' own id cannot be read */
   machineSeed?: string;
+  /** the weighing scale on this PC (optional) */
+  scale?: ScaleConfig;
 }
 export const loadConfig = (defaultUrl: string): Config => readJson<Config>("config.json", { serverUrl: defaultUrl, agentId: null, label: "" });
 export const saveConfig = (c: Config) => writeJson("config.json", c);

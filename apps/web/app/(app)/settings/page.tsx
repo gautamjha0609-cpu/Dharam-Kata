@@ -123,7 +123,8 @@ function SeriesCard() {
   );
 }
 
-interface AgentRow { id: string; site_id: string; label: string; status: string; approval?: string; app_version: string | null; os: string | null; printers_seen: { name: string; status?: string }[] | null; last_heartbeat_at: string | null }
+interface AgentRow { id: string; site_id: string; label: string; status: string; approval?: string; app_version: string | null; os: string | null; printers_seen: { name: string; status?: string }[] | null; last_heartbeat_at: string | null; scale?: AgentScale | null }
+interface AgentScale { enabled?: boolean; port?: string | null; protocol?: string | null; link?: string; state?: string; error?: string | null }
 interface PrinterRow { id: string; agent_id: string; label: string; os_printer_name: string; paper_w_mm: string; paper_h_mm: string; offset_x_mm: string; offset_y_mm: string; active: boolean; model_key: string | null }
 interface DestinationRow { printer_id: string; origin_site_id: string; is_default: boolean; active: boolean }
 interface RemovedAgentRow { id: string; label: string; revoked_at: string | null }
@@ -145,7 +146,7 @@ function PrintingCard() {
     if (!org) return;
     const sb = supabase();
     const [a, r, p, d] = await Promise.all([
-      sb.from("print_agents").select("id,site_id,label,status,approval,app_version,os,printers_seen,last_heartbeat_at").eq("organization_id", org.organization_id).eq("status", "active"),
+      sb.from("print_agents").select("id,site_id,label,status,approval,app_version,os,printers_seen,last_heartbeat_at,scale").eq("organization_id", org.organization_id).eq("status", "active"),
       sb.from("print_agents").select("id,label,revoked_at").eq("organization_id", org.organization_id).eq("status", "revoked").order("revoked_at", { ascending: false }),
       sb.from("printer_devices").select("*").eq("organization_id", org.organization_id).eq("active", true),
       sb.from("print_destinations").select("printer_id,origin_site_id,is_default,active").eq("organization_id", org.organization_id).eq("active", true),
@@ -222,6 +223,7 @@ function PrintingCard() {
               <div>
                 <p className="font-semibold text-navy">{a.label} <span className="text-sm font-normal text-slate-600">· {sites.find((s) => s.id === a.site_id)?.name}</span></p>
                 <p className="text-xs text-slate-600">v{a.app_version ?? "?"} · {a.os ?? ""} · last seen {a.last_heartbeat_at ? fmtDateTime(a.last_heartbeat_at) : "never"}</p>
+                <ScaleLine s={a.scale} />
               </div>
               {a.status === "active" && a.approval === "pending" && <span className="badge bg-amber-100 text-amber-900">⏳ Waiting for approval</span>}
               {a.status === "active" ? <button className="btn-danger !min-h-[36px]" onClick={() => revoke(a)}>Remove</button> : <span className="badge bg-slate-100 text-slate-600">– Removed</span>}
@@ -322,6 +324,17 @@ function PairedPcsCard() {
         </div>
       ))}
     </section>
+  );
+}
+
+/** The weighing scale on a printer PC, as the Print Agent last reported it (set up in the Print Agent, on that PC). */
+function ScaleLine({ s }: { s?: AgentScale | null }) {
+  if (!s?.enabled) return <p className="text-xs text-slate-500">Weighing scale: not set up (optional; set it up in the Print Agent on this PC).</p>;
+  const ok = s.link === "open" && !s.error;
+  return (
+    <p className={`text-xs ${ok ? "text-green-800" : "text-red-700"}`}>
+      Weighing scale: {s.port ?? "?"} · {ok ? (s.state === "stable" || s.state === "moving" ? "connected, data arriving" : "connected, no data yet") : s.error ? `problem (${s.error.replaceAll("_", " ")})` : "not connected"}
+    </p>
   );
 }
 

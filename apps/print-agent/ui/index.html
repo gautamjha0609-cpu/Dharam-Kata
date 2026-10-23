@@ -15,6 +15,8 @@
   button.ghost{background:#fff;color:#0B2D4C;border:1px solid #b9c5d1} button.danger{background:#fff;color:#b42318;border:1px solid #f1b0aa}
   .badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:700} .ok{background:#dcf5e5;color:#116b34} .bad{background:#fde4e1;color:#9c2118}
   .warn{background:#fff6e0;border-color:#f0c66b} .pick{display:flex;align-items:center;gap:8px;font-weight:400;margin:6px 0;padding:8px 10px;border:1px solid #dbe3ea;border-radius:8px;cursor:pointer} .pick input{width:auto;min-height:0}
+  .live{display:flex;align-items:center;gap:12px;margin-top:10px} .live .kg{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;color:#0B2D4C} .warn2{background:#fff6e0;color:#8a5a00}
+  .okt{color:#116b34;margin-top:8px} details summary{cursor:pointer;margin-top:10px} input[type=checkbox]{width:auto;min-height:0}
   .err{color:#9c2118;margin-top:8px} .hint{color:#51657a;font-size:12px;margin-top:6px} ul{margin:6px 0 0;padding-left:18px} pre{margin:0;max-height:150px;overflow:auto;font-size:12px;background:#f4f7fa;padding:8px;border-radius:6px}
 </style>
 </head>
@@ -33,11 +35,120 @@ const choiceList = (s, name) => s.choices.length
   ? s.choices.map(c => `<label class="pick"><input type="radio" name="${name}" value="${esc(c.name)}" ${c.name===pick?'checked':''}> ${esc(c.name)}</label>`).join('')
   : `<p class="err">No printer found on this PC.</p><p class="hint">Connect the printer and install its driver in Windows (Settings → Bluetooth &amp; devices → Printers &amp; scanners). It then appears here by itself.</p>`;
 const bindPick = (name) => document.querySelectorAll(`input[name="${name}"]`).forEach(i => i.addEventListener('change', e => { pick = e.target.value; }));
+// ---- weighing scale (optional) ----
+let scaleEdit = null; // the settings being edited (null = not editing)
+const fmtKg = (kg) => Number(kg).toLocaleString('en-IN') + ' kg';
+const LIVE = { stable: ['ok', '✓ Steady'], moving: ['warn2', '… Moving'], no_data: ['bad', 'No data'], stale: ['bad', 'No data'], overload: ['bad', 'Overload'], bad_unit: ['bad', 'Unit not kg / tonne'] };
+function liveHtml(sc) {
+  const l = sc.live;
+  if (!l) return '';
+  const [cls, label] = LIVE[l.kind] || ['bad', l.kind];
+  return `<div class="live"><span class="kg">${l.kg === null || l.kg === undefined ? '—' : esc(fmtKg(l.kg))}</span> <span class="badge ${cls}">${label}</span></div>
+    <p class="hint">Readings: ${l.frames}${l.rejected ? ` · rejected (bad checksum): ${l.rejected}` : ''}${l.lastDataAt ? ' · last data ' + new Date(l.lastDataAt).toLocaleTimeString() : ''}</p>
+    ${l.raw ? `<details><summary class="hint">What the indicator sends</summary><pre>${esc(l.raw)}</pre></details>` : ''}`;
+}
+function updateLive(s) { const el = $('#scaleLive'); if (el && s.scale) el.innerHTML = liveHtml(s.scale); }
+function scaleCard(s) {
+  const sc = s.scale;
+  if (!sc) return '';
+  const c = sc.cfg;
+  const st = sc.status;
+  if (!scaleEdit) {
+    if (!c.enabled) return `<div class="card"><b>Weighing scale (optional)</b>
+      <p class="hint">Connect the weighbridge indicator to this PC (RS-232 cable, USB-serial adapter or network) and the website gets a <b>Detect weight</b> button next to the weight. The weight is read only when someone taps it.</p>
+      <button class="ghost" id="scSetup">Set up the scale</button></div>`;
+    const where = c.source === 'tcp' ? `${esc(c.host)}:${esc(c.tcpPort)}` : c.source === 'sim' ? 'Simulator (test only)' : esc(c.port);
+    const proto = sc.protocols.find(p => p.id === (st && st.protocol || c.protocol));
+    return `<div class="card"><b>Weighing scale</b> <span class="badge ${st && st.link === 'open' ? 'ok' : 'bad'}">${st && st.link === 'open' ? '● Connected' : st && st.link === 'connecting' ? '○ Connecting…' : '○ Not connected'}</span>
+      <p class="hint">${where} · ${proto ? esc(proto.name) : 'format: automatic'}${c.source === 'serial' ? ` · ${esc(c.baud)} baud ${c.mask7 ? '7 bits + parity' : esc(c.framing)}` : ''} · indicator unit ${c.unit === 't' ? 'tonne' : 'kg'}</p>
+      ${st && st.error ? `<p class="err">${esc(st.error.message)}</p>` : ''}
+      <div id="scaleLive">${liveHtml(sc)}</div>
+      <button id="scTest">Read weight now (test)</button> <button class="ghost" id="scEdit">Change settings</button>
+      ${sc.test ? `<p class="${sc.test.ok ? 'okt' : 'err'}">${esc(sc.test.at)}: ${esc(sc.test.text)}</p>` : ''}
+      <p class="hint">The website reads the weight only when someone taps <b>Detect weight</b>. A weight is sent only when it is steady and fresh; a moving or old weight is never sent.</p></div>`;
+  }
+  const e = scaleEdit;
+  const ports = sc.ports.length ? sc.ports.map(p => `<option value="${esc(p.name)}" ${p.name === e.port ? 'selected' : ''}>${esc(p.label)}${p.usb ? ' · USB' : ''}</option>`).join('') : '';
+  const det = sc.detect;
+  return `<div class="card"><b>Weighing scale · settings</b>
+    <label>Connected through</label>
+    <label class="pick"><input type="radio" name="scsrc" value="serial" ${e.source === 'serial' ? 'checked' : ''}> COM port (RS-232 cable, RS-485 converter or USB-serial adapter)</label>
+    <label class="pick"><input type="radio" name="scsrc" value="tcp" ${e.source === 'tcp' ? 'checked' : ''}> Network (indicator or converter with an IP address)</label>
+    ${sc.sim ? `<label class="pick"><input type="radio" name="scsrc" value="sim" ${e.source === 'sim' ? 'checked' : ''}> Simulator (testing only)</label>` : ''}
+    ${e.source === 'serial' ? `
+      <label for="scPort">COM port</label>
+      ${ports ? `<select id="scPort"><option value="">Choose…</option>${ports}</select>` : `<p class="err">No COM port found.</p><p class="hint">Plug in the cable / USB adapter and install its driver (the port appears in Windows Device Manager → Ports (COM &amp; LPT)).</p>`}
+      <button class="ghost" id="scRefresh">Refresh list</button>
+      <label for="scUnit">The indicator shows weight in</label><select id="scUnit"><option value="kg" ${e.unit !== 't' ? 'selected' : ''}>kg</option><option value="t" ${e.unit === 't' ? 'selected' : ''}>tonne</option></select>
+      <button id="scDetect" ${det.running ? 'disabled' : ''}>${det.running ? 'Searching…' : 'Find settings automatically'}</button>
+      <label class="pick"><input type="checkbox" id="scAsk" ${e.ask ? 'checked' : ''}> Also ask the indicator (only for indicators that do not send by themselves; sends a read-only request)</label>
+      ${det.running ? `<p class="hint">${esc(det.text)}</p>` : ''}
+      ${det.result ? `<p class="${det.result.ok ? 'okt' : 'err'}">${esc(det.result.message)}</p>${det.result.sample ? `<pre>${esc(det.result.sample)}</pre>` : ''}` : ''}
+      <details ${e.manual ? 'open' : ''} id="scAdv"><summary>Set manually</summary>
+        <label for="scBaud">Speed (baud)</label><select id="scBaud">${[1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200].map(b => `<option ${Number(e.baud) === b ? 'selected' : ''}>${b}</option>`).join('')}</select>
+        <label for="scFraming">Data bits / parity / stop bits</label><select id="scFraming">
+          <option value="8N1" ${!e.mask7 && e.framing === '8N1' ? 'selected' : ''}>8 N 1 (most indicators)</option>
+          <option value="7E1" ${e.mask7 ? 'selected' : ''}>7 E 1 / 7 O 1</option>
+          <option value="8E1" ${e.framing === '8E1' ? 'selected' : ''}>8 E 1</option>
+          <option value="8O1" ${e.framing === '8O1' ? 'selected' : ''}>8 O 1</option></select>
+        ${protoSelect(sc, e)}</details>` : ''}
+    ${e.source === 'tcp' ? `
+      <label for="scHost">IP address</label><input id="scHost" value="${esc(e.host || '')}" placeholder="e.g. 192.168.1.50">
+      <label for="scTcp">Port</label><input id="scTcp" inputmode="numeric" value="${esc(e.tcpPort || '')}" placeholder="e.g. 4001">
+      <label for="scUnit">The indicator shows weight in</label><select id="scUnit"><option value="kg" ${e.unit !== 't' ? 'selected' : ''}>kg</option><option value="t" ${e.unit === 't' ? 'selected' : ''}>tonne</option></select>
+      ${protoSelect(sc, e)}` : ''}
+    <div id="scErr" class="err"></div>
+    <button id="scSave">Save</button> <button class="ghost" id="scCancel">Cancel</button> ${c.enabled ? '<button class="danger" id="scOff">Turn the scale off</button>' : ''}</div>`;
+}
+const protoSelect = (sc, e) => `<label for="scProto">Data format</label><select id="scProto"><option value="auto">Automatic (recognised from the data)</option>${sc.protocols.map(p => `<option value="${p.id}" ${e.protocol === p.id ? 'selected' : ''}>${esc(p.name)} — ${esc(p.families)}</option>`).join('')}</select>`;
+function readScaleForm() {
+  const e = scaleEdit;
+  const v = (id) => { const el = $(id); return el ? el.value : undefined; };
+  if ($('#scPort')) e.port = v('#scPort');
+  if ($('#scUnit')) e.unit = v('#scUnit');
+  if ($('#scAsk')) e.ask = $('#scAsk').checked;
+  if ($('#scBaud')) e.baud = Number(v('#scBaud'));
+  if ($('#scFraming')) { const f = v('#scFraming'); e.mask7 = f === '7E1'; e.framing = f === '7E1' ? '8N1' : f; }
+  if ($('#scProto')) e.protocol = v('#scProto');
+  if ($('#scHost')) e.host = v('#scHost');
+  if ($('#scTcp')) e.tcpPort = Number(v('#scTcp'));
+  if ($('#scAdv')) e.manual = $('#scAdv').open;
+}
+function bindScale(s) {
+  const sc = s.scale;
+  if (!sc) return;
+  const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
+  on('#scSetup', async () => { scaleEdit = { ...sc.cfg, source: sc.cfg.source || 'serial', protocol: sc.cfg.protocol || 'auto', baud: sc.cfg.baud || 9600, framing: sc.cfg.framing || '8N1' }; await window.agent.scalePorts(); render(true); });
+  on('#scEdit', async () => { scaleEdit = { ...sc.cfg }; await window.agent.scalePorts(); render(true); });
+  on('#scTest', async () => { $('#scTest').disabled = true; $('#scTest').textContent = 'Reading…'; await window.agent.scaleTest(); render(true); });
+  if (!scaleEdit) return;
+  document.querySelectorAll('input[name="scsrc"]').forEach(i => i.addEventListener('change', (ev) => { readScaleForm(); scaleEdit.source = ev.target.value; render(true); }));
+  on('#scRefresh', async () => { readScaleForm(); await window.agent.scalePorts(); render(true); });
+  on('#scCancel', () => { scaleEdit = null; render(true); });
+  on('#scDetect', async () => {
+    readScaleForm();
+    if (!scaleEdit.port) { $('#scErr').textContent = 'Choose the COM port first.'; return; }
+    await window.agent.scaleDetect(scaleEdit.port, !!scaleEdit.ask, scaleEdit.unit || 'kg');
+    const st = await window.agent.state();
+    if (st.scale.detect.result && st.scale.detect.result.ok) scaleEdit = null;
+    render(true);
+  });
+  on('#scSave', async () => {
+    readScaleForm();
+    const r = await window.agent.scaleSave({ ...scaleEdit, enabled: true });
+    if (!r.ok) { $('#scErr').textContent = r.error || 'Could not save.'; return; }
+    scaleEdit = null; render(true);
+  });
+  on('#scOff', async () => { if (confirm('Turn the scale off? The website then has no Detect weight button for this site.')) { await window.agent.scaleSave({ ...sc.cfg, enabled: false }); scaleEdit = null; render(true); } });
+}
+
 async function render(force) {
   const s = await window.agent.state();
-  const snap = JSON.stringify(s);
+  // the live weight changes many times a second: it is updated in place, the rest of the page only when something else changed
+  const snap = JSON.stringify({ ...s, scale: s.scale ? { ...s.scale, live: s.scale.live ? s.scale.live.kind : null } : null });
+  if (!force && snap === last) { updateLive(s); return; }
   const typing = document.activeElement && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) && $('#app').contains(document.activeElement);
-  if (!force && (snap === last || typing)) return;
+  if (!force && typing) { updateLive(s); return; }
   last = snap;
   $('#ver').textContent = 'Version ' + s.version + ' · ' + s.host;
   if (!s.paired) {
@@ -87,6 +198,7 @@ async function render(force) {
       ${s.lastError ? `<div class="err">${esc(s.lastError)}</div>` : ''}
       <p class="hint">Jobs sent to Windows since start: ${s.jobsPrinted}${s.lastJob ? ' · last: ' + esc(s.lastJob) : ''}</p>
       <p class="hint">This agent runs in the background and starts with Windows. Closing this window keeps it running (see the tray icon).</p></div>
+    ${scaleCard(s)}
     <div class="card"><b>Test and calibration</b>
       <p class="hint">Print the calibration sheet after setting up the printer, lay it over a real slip, then adjust X/Y in the website (Settings → Printing).</p>
       ${s.printers.length ? `<label for="pr">Printer</label><select id="pr">${s.printers.map(p => `<option ${p===chosen?'selected':''}>${esc(p)}</option>`).join('')}</select>
@@ -99,6 +211,7 @@ async function render(force) {
       <p class="hint">If a day's Excel file is open in Excel it is refreshed on the next print; no data is lost. Copy this folder to a pen drive or cloud drive for an extra safe copy.</p></div>
     <div class="card"><b>Activity</b><pre>${esc(s.log.join('\n') || 'Nothing yet')}</pre></div>
     <div class="card"><button class="ghost" id="logopen">Show the log file</button> <button class="danger" id="unpair">Unpair this PC</button><p class="hint">The log file helps support find a problem. It never contains passwords.</p></div>`;
+  bindScale(s);
   $('#pr')?.addEventListener('change', e => chosen = e.target.value);
   bindPick('change');
   if ($('#chg')) $('#chg').onclick = () => { changing = true; pick = ''; render(true); };

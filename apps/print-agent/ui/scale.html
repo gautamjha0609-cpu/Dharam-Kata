@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; connect-src wss:">
+<title>scale helper</title>
+</head>
+<body>
+<script>
+// Hidden helper of the Print Agent: reads the weighing scale's COM port with Web Serial and listens for the server's
+// "check now" signal. It only passes bytes and events to the main process (window.dkBridge); it never decides anything.
+let port = null, reader = null, keep = false;
+const bridge = window.dkBridge;
+
+// Lists the ports: the main process sees the list in its select-serial-port handler and answers "none".
+window.dkScan = async () => { try { await navigator.serial.requestPort(); } catch (e) { /* expected: nothing chosen */ } return true; };
+
+window.dkOpen = async (opts) => {
+  await window.dkClose();
+  let p;
+  try { p = await navigator.serial.requestPort(); } catch (e) { return { ok: false, code: 'port_not_found', message: String(e && e.message || e) }; }
+  try { await p.open({ ...opts, bufferSize: 8192, flowControl: 'none' }); }
+  catch (e) { return { ok: false, code: 'port_busy', message: String(e && e.message || e) }; }
+  // some USB adapters and indicators need DTR/RTS raised before they send
+  try { await p.setSignals({ dataTerminalReady: true, requestToSend: true }); } catch (e) { /* not supported by every driver */ }
+  port = p; keep = true;
+  void loop(p);
+  return { ok: true };
+};
+
+async function loop(p) {
+  while (keep && port === p && p.readable) {
+    reader = p.readable.getReader();
+    let fatal = false;
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value && value.length) bridge.data(value);
+      }
+    } catch (e) {
+      // framing / parity / break / overrun errors are not fatal: the port stays open and a new reader continues
+      fatal = !e || e.name === 'NetworkError' || e.name === 'NotFoundError' || e.name === 'InvalidStateError';
+      bridge.event({ type: 'read_error', name: e && e.name, message: String(e && e.message || e) });
+    } finally {
+      try { reader.releaseLock(); } catch (e) { /* ignore */ }
+      reader = null;
+    }
+    if (fatal) break;
+  }
+  if (port === p && keep) {
+    keep = false; port = null;
+    try { await p.close(); } catch (e) { /* ignore */ }
+    bridge.event({ type: 'closed', message: 'The scale connection was lost.' });
+  }
+}
+
+window.dkClose = async () => {
+  keep = false;
+  const p = port; port = null;
+  try { if (reader) await reader.cancel(); } catch (e) { /* ignore */ }
+  try { if (p) await p.close(); } catch (e) { /* ignore */ }
+  return true;
+};
+
+window.dkWrite = async (arr) => {
+  if (!port || !port.writable) return false;
+  const w = port.writable.getWriter();
+  try { await w.write(new Uint8Array(arr)); } finally { w.releaseLock(); }
+  return true;
+};
+
+navigator.serial.addEventListener('disconnect', (e) => { if (port && e.target === port) bridge.event({ type: 'lost' }); });
+
+// ---- "check now" signal (Supabase Realtime broadcast, public topic known only to this PC; carries no data) ----
+let ws = null, hb = null, rtCfg = null, retry = null, ref = 0;
+window.dkSignal = (cfg) => {
+  rtCfg = cfg;
+  if (retry) { clearTimeout(retry); retry = null; }
+  if (ws) { const old = ws; ws = null; try { old.close(); } catch (e) { /* ignore */ } }
+  if (cfg) connectRt();
+  return true;
+};
+function connectRt() {
+  const cfg = rtCfg;
+  if (!cfg) return;
+  let sock;
+  try { sock = new WebSocket(cfg.url.replace(/^http/, 'ws') + '/realtime/v1/websocket?apikey=' + encodeURIComponent(cfg.key) + '&vsn=1.0.0'); }
+  catch (e) { bridge.event({ type: 'rt', status: 'connect failed' }); return; }
+  ws = sock;
+  sock.onopen = () => {
+    sock.send(JSON.stringify({ topic: 'realtime:' + cfg.topic, event: 'phx_join', payload: { config: { broadcast: { self: false, ack: false }, presence: { key: '' }, private: false } }, ref: String(++ref) }));
+    hb = setInterval(() => { try { sock.send(JSON.stringify({ topic: 'phoenix', event: 'heartbeat', payload: {}, ref: String(++ref) })); } catch (e) { /* ignore */ } }, 25000);
+  };
+  sock.onmessage = (m) => {
+    let msg; try { msg = JSON.parse(m.data); } catch (e) { return; }
+    if (msg.event === 'broadcast') bridge.event({ type: 'signal' });
+    else if (msg.event === 'phx_reply' && msg.topic === 'realtime:' + cfg.topic) bridge.event({ type: 'rt', status: msg.payload && msg.payload.status === 'ok' ? 'listening' : 'join refused' });
+  };
+  sock.onclose = () => {
+    clearInterval(hb); hb = null;
+    if (ws === sock && rtCfg) retry = setTimeout(connectRt, 5000);
+  };
+  sock.onerror = () => { /* onclose follows */ };
+}
+</script>
+</body>
+</html>
