@@ -29,6 +29,8 @@ export async function POST(req: Request) {
   if (!parsed.success) return fail(400, "invalid_request", "Invalid heartbeat");
   const sb = serviceClient();
   await sb.rpc("agent_heartbeat", { p_agent: agent, p_version: parsed.data.version, p_os: parsed.data.os, p_printers: parsed.data.printers });
+  // an approved PC running a newer version raises its firm's minimum version (older versions can then never pair again)
+  await sb.rpc("agent_version_seen", { p_agent: agent, p_version: parsed.data.version });
   if (parsed.data.scale !== undefined) await sb.rpc("agent_report_scale", { p_agent: agent, p_scale: parsed.data.scale });
   // approval + the printer this PC must use (agents before 0.1.5 ignore it)
   const { data: state } = await sb.rpc("agent_state", { p_agent: agent, p_machine: parsed.data.machine_id ?? null });

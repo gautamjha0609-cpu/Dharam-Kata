@@ -136,7 +136,7 @@ function PrintingCard() {
   const [removedAgents, setRemovedAgents] = useState<RemovedAgentRow[]>([]);
   const [printers, setPrinters] = useState<PrinterRow[]>([]);
   const [destinations, setDestinations] = useState<DestinationRow[]>([]);
-  const [code, setCode] = useState<{ code: string; expires_at: string } | null>(null);
+  const [code, setCode] = useState<{ code: string; expires_at: string; min_version?: string | null } | null>(null);
   const [pick, setPick] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<{ k: "ok" | "error"; t: string } | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -163,7 +163,7 @@ function PrintingCard() {
     if (!org || !site) return;
     const { data, error } = await supabase().rpc("create_pairing_code", { p_org: org.organization_id, p_site: site });
     if (error) return setMsg({ k: "error", t: friendlyError(error) });
-    setCode(data as { code: string; expires_at: string }); setMsg(null);
+    setCode(data as { code: string; expires_at: string; min_version?: string | null }); setMsg(null);
   }
   async function applyModel(printerId: string, key: string) {
     if (!org) return null;
@@ -204,7 +204,7 @@ function PrintingCard() {
         <div><label className="label" htmlFor="ps">Site for the new printer PC</label><Select id="ps" className="field" value={site} onChange={(e) => setSite(e.target.value)}>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></div>
         <button className="btn-navy" onClick={pair}>Generate pairing code</button>
       </div>
-      {code && <Alert kind="info">Enter this code in the Print Agent within 10 minutes (single use): <b className="select-all text-xl tracking-widest">{code.code}</b></Alert>}
+      {code && <Alert kind="info">Enter this code in the Print Agent within 10 minutes (single use): <b className="select-all text-xl tracking-widest">{code.code}</b>{code.min_version && <span className="mt-1 block text-sm">This firm uses Print Agent <b>{code.min_version}</b> or newer: an older version on a PC is refused. Use the latest setup file.</span>}</Alert>}
       <p className="text-xs text-slate-600">One PC prints per site. If a site already has a PC, the new PC waits here for your approval (the old PC is then removed). Pairing the same PC again simply replaces its old entry.</p>
       <AgentRequests onChange={() => void load()} />
 
