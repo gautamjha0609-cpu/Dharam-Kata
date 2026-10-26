@@ -41,5 +41,8 @@ export async function POST(req: Request) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL, anon = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
     if (key && url && anon) signal = { url, key: anon, topic: `dk-agent-${key as string}` };
   }
-  return ok({ server_time: new Date().toISOString(), state: state ?? null, signal });
+  // agents from 0.1.9 then talk to the database directly (public address + public key; every call is checked with the PC's own credential)
+  const direct = process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+    ? { url: process.env.NEXT_PUBLIC_SUPABASE_URL, key: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY } : null;
+  return ok({ server_time: new Date().toISOString(), state: state ?? null, signal, direct });
 }

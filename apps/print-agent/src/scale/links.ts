@@ -19,7 +19,10 @@ export class ScaleHost implements LinkFactory {
   private dataSink: ((b: Uint8Array) => void) | null = null;
   private closedSink: ((code: string, message: string) => void) | null = null;
   private busy: Promise<unknown> = Promise.resolve();
-  private signal: (() => void) | null = null;
+  private signal: ((name: string) => void) | null = null;
+  private onListening: (() => void) | null = null;
+  /** the "check now" signal channel is connected right now */
+  listening = false;
   private signalCfg: string | null = null;
 
   constructor(private readonly preload: string, private readonly page: string, private readonly log: (m: string) => void) {
@@ -36,13 +39,18 @@ export class ScaleHost implements LinkFactory {
     ses.setDevicePermissionHandler((d) => d.deviceType === "serial");
     ses.setPermissionRequestHandler((_wc, _p, cb) => cb(false));
     ipcMain.on("scale-data", (e: IpcMainEvent, b: Uint8Array) => { if (this.fromHelper(e)) this.dataSink?.(b instanceof Uint8Array ? b : new Uint8Array(b)); });
-    ipcMain.on("scale-event", (e: IpcMainEvent, ev: { type: string; name?: string; message?: string; status?: string }) => {
+    ipcMain.on("scale-event", (e: IpcMainEvent, ev: { type: string; name?: unknown; message?: string; status?: string }) => {
       if (!this.fromHelper(e)) return;
       if (ev.type === "lost") this.closedSink?.("port_lost", "The scale's cable or USB adapter was disconnected.");
       else if (ev.type === "closed") this.closedSink?.("port_lost", ev.message || "The scale connection closed.");
-      else if (ev.type === "signal") this.signal?.();
+      else if (ev.type === "signal") this.signal?.(typeof ev.name === "string" ? ev.name : "");
       else if (ev.type === "read_error") this.log(`Scale line error (${ev.name}): ${ev.message ?? ""}`);
-      else if (ev.type === "rt") this.log(`Realtime signal: ${ev.status}`);
+      else if (ev.type === "rt") {
+        const now = ev.status === "listening";
+        if (now !== this.listening) this.log(`Realtime signal: ${ev.status}`); // only changes, not every reconnect attempt
+        this.listening = now;
+        if (now) this.onListening?.(); // (re)connected: anything sent while it was away is picked up at once
+      }
     });
   }
 
@@ -59,6 +67,7 @@ export class ScaleHost implements LinkFactory {
     this.win.webContents.on("render-process-gone", () => {
       this.log("Scale helper restarted");
       this.closedSink?.("port_lost", "The scale helper stopped; reconnecting.");
+      this.listening = false;
       this.win = null; this.ready = null;
       if (this.signalCfg) setTimeout(() => void this.listenRaw(), 2000);
     });
@@ -142,9 +151,11 @@ export class ScaleHost implements LinkFactory {
    * Listens for the server's "check now" signal (Supabase Realtime broadcast on this PC's secret topic). The signal carries no data:
    * the agent then asks the server, with its own credential, what to do. Without it the 5-second poll still picks requests up.
    */
-  listen(cfg: { url: string; key: string; topic: string } | null, onSignal: () => void) {
+  listen(cfg: { url: string; key: string; topic: string } | null, onSignal: (name: string) => void, onListening?: () => void) {
     const next = cfg ? JSON.stringify(cfg) : null;
     this.signal = onSignal;
+    this.onListening = onListening ?? null;
+    if (!next) this.listening = false;
     if (next === this.signalCfg) return;
     this.signalCfg = next;
     void this.listenRaw();

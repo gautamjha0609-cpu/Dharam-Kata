@@ -1,5 +1,6 @@
 "use client";
 import { Select } from "@/components/ios";
+import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
@@ -157,7 +158,8 @@ function PrintingCard() {
     setDestinations((d.data ?? []) as DestinationRow[]);
     setLoaded(true);
   }, [org]);
-  useEffect(() => { void load(); const t = setInterval(() => void load(), 20000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { void load(); }, [load]);
+  useVisibleInterval(load, 20000);
 
   async function pair() {
     if (!org || !site) return;

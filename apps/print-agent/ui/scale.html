@@ -94,11 +94,12 @@ function connectRt() {
   };
   sock.onmessage = (m) => {
     let msg; try { msg = JSON.parse(m.data); } catch (e) { return; }
-    if (msg.event === 'broadcast') bridge.event({ type: 'signal' });
+    if (msg.event === 'broadcast') bridge.event({ type: 'signal', name: String((msg.payload && msg.payload.event) || '') });
     else if (msg.event === 'phx_reply' && msg.topic === 'realtime:' + cfg.topic) bridge.event({ type: 'rt', status: msg.payload && msg.payload.status === 'ok' ? 'listening' : 'join refused' });
   };
   sock.onclose = () => {
     clearInterval(hb); hb = null;
+    if (ws === sock) bridge.event({ type: 'rt', status: 'closed' });
     if (ws === sock && rtCfg) retry = setTimeout(connectRt, 5000);
   };
   sock.onerror = () => { /* onclose follows */ };

@@ -3,6 +3,7 @@
 // Nothing is read until the operator taps the button; then the server asks that PC, the PC answers with the STEADY weight,
 // and the reading is shown here. Saving the entry with it lets the server check that exactly this weight is saved.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-context";
 import { friendlyError } from "@/lib/errors";
@@ -37,7 +38,8 @@ export function useSiteScale(siteId: string): SiteScale | null {
     const a = rows.find((r) => (r.approval ?? "approved") === "approved" && r.scale?.enabled);
     setS(a ? { available: true, online: !!a.last_heartbeat_at && Date.now() - Date.parse(a.last_heartbeat_at) < 120_000, pc: a.label } : { available: false, online: false, pc: null });
   }, [org, siteId]);
-  useEffect(() => { void load(); const t = setInterval(() => void load(), 30_000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { void load(); }, [load]);
+  useVisibleInterval(load, 30_000);
   return s;
 }
 

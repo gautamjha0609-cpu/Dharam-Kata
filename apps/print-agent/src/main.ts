@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, session, shell, Tray } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, session, shell, Tray } from "electron";
 import { hostname, release } from "node:os";
 import { join } from "node:path";
 import { isPdfPrinter, isVirtualPrinter, renderCalibrationHtml, renderHtml, ticketPreset } from "@dk/print-template";
@@ -6,6 +6,7 @@ import { AgentCore } from "./core";
 import { DailyBackup } from "./backup";
 import { ElectronPrinter } from "./electron-printer";
 import { HttpApi, HttpError, pair, type AgentState } from "./http-api";
+import { DirectApi, DirectUnavailable, Router, infoSignature, type PingInfo } from "./direct-api";
 import { machineId, newSeed } from "./machine-id";
 import { logFilePath, logLine } from "./logger";
 import { FileJournal, clearToken, loadConfig, loadToken, saveConfig, saveToken } from "./store";
@@ -24,6 +25,9 @@ const PRODUCT = `Dharam Kata Print Agent ${app.getVersion()}`;
 const POLL_MS = 5_000;
 const MAX_POLL_MS = 60_000; // while the server cannot be reached the agent backs off instead of knocking every 5 s
 const HEARTBEAT_MS = 30_000;
+// with the direct route the heartbeat sends "still here" only; the full details (printers, version, scale) go when they change and at
+// least this often
+const FULL_INFO_MS = 5 * 60_000;
 
 // One agent per PC. A second launch just brings the first one forward.
 const hasLock = app.requestSingleInstanceLock();
@@ -42,7 +46,9 @@ const printer = new ElectronPrinter((fileName) => {
 const log: string[] = [];
 const state = { connected: false, lastError: "", lastJob: "", printers: [] as string[], jobsPrinted: 0 };
 let core: AgentCore | null = null;
-let api: HttpApi | null = null;
+let api: HttpApi | null = null; // the website (all agents before 0.1.9 used only this)
+let direct: DirectApi | null = null; // the database itself, without the website (0.1.9+)
+let link: Router | null = null; // direct when possible, else the website
 let journal: FileJournal;
 let backup: DailyBackup;
 const defaultBackupDir = () => join(app.getPath("documents"), "DharamKata Backup");
@@ -93,10 +99,13 @@ function applyState(st: AgentState | null | undefined) {
 function setupAgent() {
   const cfg = loadConfig(DEFAULT_SERVER);
   const token = loadToken();
-  if (!cfg.agentId || !token) { core = null; api = null; return; }
+  if (!cfg.agentId || !token) { core = null; api = null; direct = null; link = null; return; }
   api = new HttpApi(cfg.serverUrl, token);
+  direct = cfg.direct?.url && cfg.direct.key ? new DirectApi(cfg.direct, token, (u, i) => net.fetch(u, i)) : null;
+  link = new Router(() => direct, () => api!, note);
+  lastInfo = "";
   // jobs only ever go to the printer approved for this PC; a mismatch first asks the server again (a change may just have been approved)
-  core = new AgentCore(api, printer, journal, note, backup, () => new Date(), async (refresh) => {
+  core = new AgentCore(link, printer, journal, note, backup, () => new Date(), async (refresh) => {
     if (refresh) await heartbeat();
     return loadConfig(DEFAULT_SERVER).printer ?? null;
   });
@@ -123,10 +132,39 @@ async function heartbeat() {
   try {
     const withStatus = await printer.listWithStatus();
     state.printers = withStatus.map((p) => p.name);
-    const r = await api.heartbeat(app.getVersion(), `Windows ${release()}`, withStatus, await thisMachine(), scale?.summary() ?? null);
-    applyState(r?.state);
-    // the "check now" signal is only needed while a scale is set up
-    scaleHost?.listen(scale?.config().enabled ? r?.signal ?? null : null, () => void checkWeights());
+    const summary = scale?.summary() ?? null;
+    const d = link?.usable();
+    let done = false;
+    if (d) {
+      const info: PingInfo = { version: app.getVersion(), os: `Windows ${release()}`, printers: withStatus, machine_id: await thisMachine(), ...(summary ? { scale: summary } : {}) };
+      const sig = infoSignature(info);
+      const full = sig !== lastInfo || Date.now() - lastInfoAt > FULL_INFO_MS;
+      try {
+        const r = await d.ping(full ? info : null);
+        if (full) { lastInfo = sig; lastInfoAt = Date.now(); }
+        applyState(r.state);
+        // the "check now" signal: a queued slip prints at once and a weight request is answered at once; nothing is polled meanwhile
+        const c = loadConfig(DEFAULT_SERVER).direct;
+        scaleHost?.listen(r.topic && c ? { url: c.url, key: c.key, topic: r.topic } : null, onSignal, onListening);
+        // safety net: work the signal did not announce (e.g. sent while the connection was down)
+        if (r.jobs) void drainJobs();
+        if (r.weights) void checkWeights();
+        scheduleRetry(r.next_job_in_ms);
+        done = true;
+      } catch (e) {
+        if (!(e instanceof DirectUnavailable)) throw e;
+        link!.down(e);
+        lastInfo = "";
+      }
+    }
+    if (!done) {
+      // through the website, exactly as before 0.1.9
+      const r = await api.heartbeat(app.getVersion(), `Windows ${release()}`, withStatus, await thisMachine(), summary);
+      applyState(r?.state);
+      rememberDirect(r?.direct ?? null);
+      // the "check now" signal is only needed while a scale is set up (jobs are polled every 5 s on this route)
+      scaleHost?.listen(scale?.config().enabled ? r?.signal ?? null : null, onSignal, onListening);
+    }
     state.connected = true; state.lastError = "";
   } catch (e) {
     state.connected = false;
@@ -136,20 +174,54 @@ async function heartbeat() {
   win?.webContents.send("state-changed");
 }
 
+let lastInfo = "";
+let lastInfoAt = 0;
+
+/** The website tells where the database is; from then on the agent talks to it directly. */
+function rememberDirect(d: { url: string; key: string } | null) {
+  if (!d?.url || !d.key || !/^https:\/\//.test(d.url)) return;
+  const cfg = loadConfig(DEFAULT_SERVER);
+  if (cfg.direct?.url === d.url && cfg.direct.key === d.key) return;
+  saveConfig({ ...cfg, direct: { url: d.url, key: d.key } });
+  const token = loadToken();
+  direct = token ? new DirectApi({ url: d.url, key: d.key }, token, (u, i) => net.fetch(u, i)) : null;
+  lastInfo = "";
+  note("Printing and weight requests now go straight to the database (instant signal, no polling).");
+}
+
+/** Signals arrive and nothing is polled: only while the direct route works AND the signal channel is connected. */
+const eventMode = () => !!link?.usable() && !!scaleHost?.listening;
+
+/** "check now" from the server: "job" = a slip is queued for this PC, "weigh" = Detect weight was tapped. */
+function onSignal(name: string) {
+  if (name !== "weigh") void drainJobs();
+  if (name !== "job") void checkWeights();
+}
+/** The signal channel (re)connected: pick up anything that was sent while it was away. */
+function onListening() { void drainJobs(); void checkWeights(); }
+
+/** A job waits for an automatic retry: claim it when its time comes (instead of polling for it). */
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleRetry(ms: number | null) {
+  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+  if (ms === null || !Number.isFinite(ms)) return;
+  retryTimer = setTimeout(() => { retryTimer = null; void drainJobs(); }, Math.min(Math.max(ms, 0), 10 * 60_000) + 500);
+}
+
 /**
  * Answers the website's "Detect weight" requests for this PC: reads the steady weight from the scale and sends it back.
- * Triggered by the server's signal (within a second) and, as a fallback, by every 5-second poll.
+ * Triggered by the server's signal (within a second); without the signal channel, by every 5-second poll.
  */
 let weighing = false;
 async function checkWeights() {
-  if (!api || !scale || weighing || !scale.config().enabled) return;
+  if (!link || !scale || weighing || !scale.config().enabled) return;
   weighing = true;
   try {
     for (let i = 0; i < 5; i++) {
-      const req = await api.nextWeightRead();
+      const req = await link.nextWeightRead();
       if (!req) break;
       const r = await scale.read(8000);
-      await api.finishWeightRead(req.id, r.ok ? { ok: true, kg: r.kg, raw: r.raw, frames: r.frames } : { ok: false, code: r.code });
+      await link.finishWeightRead(req.id, r.ok ? { ok: true, kg: r.kg, raw: r.raw, frames: r.frames } : { ok: false, code: r.code });
       note(r.ok ? `Weight sent to the website: ${r.kg} kg` : `Weight not sent: ${r.message}`);
     }
   } catch (e) {
@@ -159,9 +231,15 @@ async function checkWeights() {
   }
 }
 
-let busy = false;
+/** Every 5 s, but only when signals cannot arrive (website route, or the signal channel is down): then it works exactly as before. */
 async function poll() {
+  if (eventMode()) return;
   void checkWeights();
+  await drainJobs();
+}
+
+let busy = false;
+async function drainJobs() {
   if (!core || busy) return;
   busy = true;
   try {
@@ -425,7 +503,7 @@ ipcMain.handle("request-printer", async (_e, printerName: string) => {
   const installed = await printer.list();
   if (!installed.includes(chosen) || isVirtualPrinter(chosen)) return { ok: false, error: "That printer is not installed on this PC." };
   try {
-    const r = await api.requestPrinter(chosen);
+    const r = await link!.requestPrinter(chosen);
     applyState(r?.state);
     note(`Asked to use ${chosen}. An owner or administrator must approve it on the website.`);
     return { ok: true };
@@ -436,6 +514,7 @@ ipcMain.handle("request-printer", async (_e, printerName: string) => {
 
 ipcMain.handle("unpair", () => {
   clearToken();
+  scaleHost?.listen(null, () => {}); // no more signals for this PC
   saveConfig({ ...loadConfig(DEFAULT_SERVER), agentId: null, printer: null, approval: undefined, request: null });
   setupAgent();
   state.connected = false;

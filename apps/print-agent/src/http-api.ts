@@ -40,7 +40,7 @@ export class HttpApi implements Api {
     await call(this.base, `/api/v1/agent/jobs/${jobId}/events`, { method: "POST", token: this.token, body: JSON.stringify({ lease_token: lease, status, error_code: errorCode }) });
   }
   heartbeat(version: string, os: string, printers: { name: string; status: string }[], machineId: string, scale?: Record<string, unknown> | null) {
-    return call<{ state?: AgentState | null; signal?: Signal | null }>(this.base, "/api/v1/agent/heartbeat", { method: "POST", token: this.token, body: JSON.stringify({ version, os, printers, machine_id: machineId, ...(scale ? { scale } : {}) }) });
+    return call<{ state?: AgentState | null; signal?: Signal | null; direct?: { url: string; key: string } | null }>(this.base, "/api/v1/agent/heartbeat", { method: "POST", token: this.token, body: JSON.stringify({ version, os, printers, machine_id: machineId, ...(scale ? { scale } : {}) }) });
   }
   /** The oldest "Detect weight" request from the website for this PC, or null. */
   nextWeightRead() { return call<{ id: string } | null>(this.base, "/api/v1/agent/weight/next", { method: "POST", token: this.token, body: "{}" }); }

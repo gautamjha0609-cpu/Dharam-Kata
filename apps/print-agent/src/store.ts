@@ -33,6 +33,8 @@ export interface Config {
   request?: { kind: string; printer: string | null } | null;
   /** fallback machine id when Windows' own id cannot be read */
   machineSeed?: string;
+  /** where the database is (public address + public key, from the website): the agent then talks to it directly */
+  direct?: { url: string; key: string } | null;
   /** the weighing scale on this PC (optional) */
   scale?: ScaleConfig;
 }

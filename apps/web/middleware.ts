@@ -35,4 +35,8 @@ export async function middleware(req: NextRequest) {
   return res;
 }
 
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };
+// Not run for: build files, the printer PCs' API (they use their own credential, never a cookie), the version check, and plain files
+// (icons, logo, manifest, service worker): they need no sign-in check, so they cost no server time.
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|api/v1/agent/|api/version|api/health|.*\\.(?:png|jpe?g|webp|gif|svg|ico|js|css|txt|xml|webmanifest|json|woff2?)$).*)"],
+};
