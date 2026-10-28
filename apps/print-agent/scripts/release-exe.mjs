@@ -28,7 +28,7 @@ if (existsSync(shared) && readdirSync(shared).some((d) => d.startsWith(`v${versi
 run("Agent typecheck", "pnpm", ["typecheck"], {}, true); // pnpm is a .cmd file on Windows: it needs a shell; the steps below pass their arguments directly (no shell, no quoting problems)
 run("Agent tests", "pnpm", ["test"], {}, true);
 rmSync(join(agent, "release"), { recursive: true, force: true }); // never mix installers of earlier builds with this one
-run("Build installers (x64, ia32, arm64, all-in-one)", "pnpm", ["dist"], { DK_SERVER_URL: process.env.DK_SERVER_URL ?? "https://dharam-kata.vercel.app", CSC_IDENTITY_AUTO_DISCOVERY: "false" }, true);
+run("Build installers (x64, ia32, arm64, all-in-one)", "pnpm", ["dist"], { DK_SERVER_URL: process.env.DK_SERVER_URL ?? "https://dharam-kata-kappa.vercel.app", CSC_IDENTITY_AUTO_DISCOVERY: "false" }, true);
 // the newest EARLIER version in the shared folder plays "the version a client is still using": it must stay untouched by the new install
 const cmp = (a, b) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0); return 0; };
 const folders = existsSync(shared) ? readdirSync(shared) : [];

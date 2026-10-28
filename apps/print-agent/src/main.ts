@@ -14,8 +14,10 @@ import { ScaleManager, type ScaleConfig } from "./scale/manager";
 import { ScaleHost, helperFiles } from "./scale/links";
 import { PROTOCOLS, type ProtocolId } from "./scale/protocols";
 
-// Set at build time to your deployed website, e.g. https://dharam-kata.vercel.app (must be HTTPS in production).
-const DEFAULT_SERVER = process.env.DK_SERVER_URL || "https://dharam-kata.vercel.app";
+// Set at build time to your deployed website (must be HTTPS in production).
+const DEFAULT_SERVER = process.env.DK_SERVER_URL || "https://dharam-kata-kappa.vercel.app";
+// Addresses the website had before. A PC paired there is moved to the current address at start (no new pairing: same database).
+const OLD_SERVERS = ["https://dharam-kata.vercel.app"];
 // pairing and settings live in one folder for ALL versions, so updating the agent never needs pairing again
 // (DK_USER_DATA: a separate folder for development tests only, so a test run never touches the real pairing)
 app.setPath("userData", process.env.DK_USER_DATA || join(app.getPath("appData"), "Dharam Kata Print Agent"));
@@ -309,7 +311,7 @@ function createTray() {
   tray = new Tray(nativeImage.createFromPath(uiFile("tray.png")));
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open Dharam Kata Print Agent", click: showWindow },
-    { label: "Open the website (dharam-kata.vercel.app)", click: openWebsite },
+    { label: `Open the website (${new URL(loadConfig(DEFAULT_SERVER).serverUrl).host})`, click: openWebsite },
     { label: "Open the backup folder", click: () => void shell.openPath(backup.getRoot()) },
     { label: "Show the log file", click: () => shell.showItemInFolder(logFilePath()) },
     { type: "separator" },
@@ -324,6 +326,12 @@ if (hasLock) {
   app.whenReady().then(() => {
     // the app's own pages need no permissions (camera, location, notifications ...)
     session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+    // the website moved: a PC paired at an old address now talks to the current one
+    const moved = loadConfig(DEFAULT_SERVER);
+    if (OLD_SERVERS.includes(moved.serverUrl.replace(/\/+$/, "")) && moved.serverUrl !== DEFAULT_SERVER) {
+      saveConfig({ ...moved, serverUrl: DEFAULT_SERVER });
+      logLine(`website address changed from ${moved.serverUrl} to ${DEFAULT_SERVER}`);
+    }
     journal = new FileJournal();
     backup = new DailyBackup(loadConfig(DEFAULT_SERVER).backupDir || defaultBackupDir(), () => new Date(), note);
     setupAgent();

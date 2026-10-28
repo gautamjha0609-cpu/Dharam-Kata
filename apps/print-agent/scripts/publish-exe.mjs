@@ -22,7 +22,7 @@ const note = process.argv.slice(2).join(" ").trim() || "(no note)";
 const text = `Dharam Kata Print Agent
 Version : ${version}
 Built   : ${ist.slice(0, 10)} ${ist.slice(11, 16)} (India time)
-Website : https://dharam-kata.vercel.app
+Website : https://dharam-kata-kappa.vercel.app
 
 What changed
   ${note}

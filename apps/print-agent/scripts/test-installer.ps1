@@ -170,6 +170,8 @@ if ($OldInstaller -and (Test-Path $OldInstaller)) {
       Stop-Agent
       $after = $null; try { $after = Get-Content $cfgFile -Raw | ConvertFrom-Json } catch { $p20 += "config.json is no longer readable" }
       if ($after -and $after.agentId -ne "00000000-0000-4000-8000-0000000000aa") { $p20 += "the new version changed the pairing" }
+      # 0.2.0+: the website moved; a PC paired at the old address is moved to the new one by itself (same pairing)
+      if ($after -and [version]$Version -ge [version]"0.2.0" -and $after.serverUrl -ne "https://dharam-kata-kappa.vercel.app") { $p20 += "the PC was not moved to the new website address (still $($after.serverUrl))" }
       Add-Result "20 new version runs with the older version's settings" $p20
       Remove-Item $cfgFile, $devFile -Force -ErrorAction SilentlyContinue
       foreach ($f in @("config.json", "device.bin")) { if (Test-Path (Join-Path $aside $f)) { Copy-Item (Join-Path $aside $f) $data -Force } }

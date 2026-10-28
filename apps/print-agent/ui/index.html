@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<header><img src="logo.png" alt="" width="44" height="44"><div style="flex:1"><h1>Dharam Kata Print Agent</h1><p id="ver"></p></div><a href="#" id="site" title="Open the website in your browser">dharam-kata.vercel.app ↗</a></header>
+<header><img src="logo.png" alt="" width="44" height="44"><div style="flex:1"><h1>Dharam Kata Print Agent</h1><p id="ver"></p></div><a href="#" id="site" title="Open the website in your browser">Open the website ↗</a></header>
 <main id="app"></main>
 <script>
 const $ = (s) => document.querySelector(s);
@@ -151,6 +151,7 @@ async function render(force) {
   if (!force && typing) { updateLive(s); return; }
   last = snap;
   $('#ver').textContent = 'Version ' + s.version + ' · ' + s.host;
+  try { $('#site').textContent = new URL(s.server).host + ' ↗'; } catch (e) { /* keep the plain label */ }
   if (!s.paired) {
     if (pick && !s.choices.some(c => c.name === pick)) pick = '';
     $('#app').innerHTML = `<div class="card"><b>Step 1 · Choose the printer for slips</b>
