@@ -9,6 +9,7 @@ import { fmtDateTime } from "@/lib/format";
 import { Alert, Empty, PageHead, PrintBadge, PRINT_ERRORS } from "@/components/ui";
 import { useLive } from "@/lib/use-live";
 import { WAIT_ALERT_MS, retryPrint } from "@/components/print-status";
+import { isPcOnline, usePcCheck } from "@/lib/pc-check";
 
 interface Job { id: string; invoice_id: string; job_type: string; status: string; attempt_count: number; last_error_code: string | null; queued_at: string; reprint_reason: string | null }
 interface Agent { id: string; label: string; status: string; app_version: string | null; last_heartbeat_at: string | null }
@@ -43,8 +44,8 @@ export default function PrintCentre() {
   }, [org, status]);
   useEffect(() => { void load(); }, [load]);
   useLive(load, ["print_jobs"], { staleMs: 30_000 });
-  // printer PCs report in about every minute (no realtime for that): refresh their status once a minute, and only while this tab is in front
-  useEffect(() => { const t = setInterval(() => { if (!document.hidden) void load(); }, 60_000); return () => clearInterval(t); }, [load]);
+  // printer PCs are asked whether they are there when this page opens (they send no timed heartbeat)
+  const { askedAt } = usePcCheck(org?.organization_id, null, () => void load());
 
   const [busy, setBusy] = useState<string | null>(null);
   async function again(j: Job) {
@@ -56,7 +57,7 @@ export default function PrintCentre() {
   }
   const canRetry = (j: Job) => !!j.invoice_id && (["failed", "routing_error", "not_configured"].includes(j.status) || (j.status === "queued" && Date.now() - new Date(j.queued_at).getTime() > WAIT_ALERT_MS));
 
-  const online = (a: Agent) => a.status === "active" && a.last_heartbeat_at && Date.now() - new Date(a.last_heartbeat_at).getTime() < 90_000;
+  const online = (a: Agent) => a.status === "active" && isPcOnline(a.last_heartbeat_at, askedAt);
 
   return (
     <div>

@@ -7,12 +7,12 @@ import { useApp } from "@/lib/app-context";
 import { friendlyError } from "@/lib/errors";
 import { fmtDateTime } from "@/lib/format";
 import { Alert, PageHead } from "@/components/ui";
+import { isPcOnline, usePcCheck } from "@/lib/pc-check";
 
 interface Pc { id: string; pc: string; site: string; version: string | null; last_seen: string | null; approval: string; printer: string | null }
 interface Req { id: string; pc: string; site: string; printer: string | null; requested_at: string; firm_approved_at: string | null; platform_approved_at: string | null; old_pcs: string[] }
 interface FirmRow { org_id: string; firm: string; slug: string; pairings: number; desktop_changes: number; printer_changes: number; last_pairing: string | null; pcs: Pc[]; requests: Req[] }
 
-const online = (p: Pc) => !!p.last_seen && Date.now() - new Date(p.last_seen).getTime() < 90_000;
 
 /** Platform admin: every firm's printer PCs, how often they paired / changed desktop / changed printer, and desktop-change approvals. */
 export default function AdminPrintersPage() {
@@ -29,6 +29,9 @@ export default function AdminPrintersPage() {
     setRows((data ?? []) as FirmRow[]);
   }, []);
   useEffect(() => { void load(); }, [load]);
+  // every firm's PCs are asked whether they are there when this page opens (they send no timed heartbeat)
+  const { askedAt } = usePcCheck(null, null, () => void load(), { admin: true });
+  const online = (p: Pc) => isPcOnline(p.last_seen, askedAt);
 
   const shown = useMemo(() => {
     const v = q.trim().toLowerCase();

@@ -73,7 +73,7 @@ window.dkWrite = async (arr) => {
 navigator.serial.addEventListener('disconnect', (e) => { if (port && e.target === port) bridge.event({ type: 'lost' }); });
 
 // ---- "check now" signal (Supabase Realtime broadcast, public topic known only to this PC; carries no data) ----
-let ws = null, hb = null, rtCfg = null, retry = null, ref = 0;
+let ws = null, hb = null, rtCfg = null, retry = null, ref = 0, lastMsgAt = 0;
 window.dkSignal = (cfg) => {
   rtCfg = cfg;
   if (retry) { clearTimeout(retry); retry = null; }
@@ -90,9 +90,16 @@ function connectRt() {
   ws = sock;
   sock.onopen = () => {
     sock.send(JSON.stringify({ topic: 'realtime:' + cfg.topic, event: 'phx_join', payload: { config: { broadcast: { self: false, ack: false }, presence: { key: '' }, private: false } }, ref: String(++ref) }));
-    hb = setInterval(() => { try { sock.send(JSON.stringify({ topic: 'phoenix', event: 'heartbeat', payload: {}, ref: String(++ref) })); } catch (e) { /* ignore */ } }, 25000);
+    lastMsgAt = Date.now();
+    // keep-alive with the signal server only (no database). The server answers every keep-alive: if nothing at all arrived for
+    // 65 s the connection is dead without having closed (sleep, Wi-Fi switch): close it, which reconnects and catches up.
+    hb = setInterval(() => {
+      if (Date.now() - lastMsgAt > 65000) { try { sock.close(); } catch (e) { /* ignore */ } return; }
+      try { sock.send(JSON.stringify({ topic: 'phoenix', event: 'heartbeat', payload: {}, ref: String(++ref) })); } catch (e) { /* ignore */ }
+    }, 25000);
   };
   sock.onmessage = (m) => {
+    lastMsgAt = Date.now();
     let msg; try { msg = JSON.parse(m.data); } catch (e) { return; }
     if (msg.event === 'broadcast') bridge.event({ type: 'signal', name: String((msg.payload && msg.payload.event) || '') });
     else if (msg.event === 'phx_reply' && msg.topic === 'realtime:' + cfg.topic) bridge.event({ type: 'rt', status: msg.payload && msg.payload.status === 'ok' ? 'listening' : 'join refused' });

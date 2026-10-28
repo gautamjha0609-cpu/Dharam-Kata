@@ -15,6 +15,7 @@ import { ExtraInputs, extraPayload, extraProblem, useCustomFields } from "@/comp
 import { PrintFollow, PrintTarget, WaitingSlips, useSitePrintStatus } from "@/components/print-status";
 import type { Invoice, PrintJob } from "@/lib/types";
 import { DetectWeight, type ScaleReading } from "@/components/scale-weight";
+import { askPcs } from "@/lib/pc-check";
 
 /** What find_open_entry returns for a vehicle that was weighed once and has not come back yet. */
 interface OpenEntry {
@@ -104,6 +105,7 @@ export default function WeighmentPage() {
     if (!plate.ok) { setVehErr(plate.message); return; }
     setVehErr(null); v = formatVehicle(plate.value); setVehicle(v); // stored and shown in the standard form, e.g. RJ14 GD 9158
     setError(null); setChecking(true); setDone(null);
+    askPcs(); // the printer / scale PC says whether it is there (no timed heartbeat)
     const sb = supabase();
     const [o, d] = await Promise.all([
       sb.rpc("find_open_entry", { p_org: org.organization_id, p_site: siteId, p_vehicle: v }),

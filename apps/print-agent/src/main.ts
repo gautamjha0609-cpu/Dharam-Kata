@@ -196,11 +196,18 @@ const eventMode = () => !!link?.usable() && !!scaleHost?.listening;
 
 /** "check now" from the server: "job" = a slip is queued for this PC, "weigh" = Detect weight was tapped. */
 function onSignal(name: string) {
-  if (name !== "weigh") void drainJobs();
-  if (name !== "job") void checkWeights();
+  // "ping": a page asks whether this PC is there; "state": an approval / printer / route changed. One answer each, nothing else.
+  if (name === "ping" || name === "state") { void heartbeat(); return; }
+  if (name === "job") {
+    // nothing claimable yet = an automatic retry waits for its time: the answer to one heartbeat sets the timer for it
+    void drainJobs().then((n) => { if (n === 0) void heartbeat(); });
+    return;
+  }
+  if (name === "weigh") { void checkWeights(); return; }
+  void drainJobs(); void checkWeights();
 }
-/** The signal channel (re)connected: pick up anything that was sent while it was away. */
-function onListening() { void drainJobs(); void checkWeights(); }
+/** The signal channel (re)connected: pick up anything that was sent while it was away, and say "still here" once. */
+function onListening() { void drainJobs(); void checkWeights(); void heartbeat(); }
 
 /** A job waits for an automatic retry: claim it when its time comes (instead of polling for it). */
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -241,15 +248,18 @@ async function poll() {
 }
 
 let busy = false;
-async function drainJobs() {
-  if (!core || busy) return;
+/** Prints every job waiting for this PC; returns how many it handled. */
+async function drainJobs(): Promise<number> {
+  if (!core || busy) return -1;
   busy = true;
+  let n = 0;
   try {
     // drain: keep going while there are jobs, so a burst is not delayed by the poll interval
     await backup.flush(); // refresh any Excel file that was open/locked earlier
     for (let i = 0; i < 20; i++) {
       const r = await core.tick();
       if (r === "idle") break;
+      n++;
       state.lastJob = `${new Date().toLocaleTimeString()} ${r}`;
       if (r === "printed") state.jobsPrinted++;
       win?.webContents.send("state-changed");
@@ -262,6 +272,7 @@ async function drainJobs() {
     busy = false;
     refreshTray();
   }
+  return n;
 }
 
 /** Runs `fn` again after `ms`; after a failure the wait doubles (up to a minute), after a success it goes back to normal. */
@@ -351,7 +362,9 @@ if (hasLock) {
     logLine(`started v${app.getVersion()} on Windows ${release()} (${process.arch})`);
 
     loop(poll, POLL_MS, true);
-    loop(heartbeat, HEARTBEAT_MS, false);
+    // no timed heartbeat while the signal channel works: the PC answers only when asked ("ping") or when something happens.
+    // Without the signal channel (blocked network, website route) it reports every 30 s, as before.
+    loop(async () => { if (!eventMode()) await heartbeat(); }, HEARTBEAT_MS, false);
     void heartbeat().then(() => poll());
   });
   app.on("second-instance", showWindow);

@@ -9,6 +9,7 @@ import { useLive } from "@/lib/use-live";
 import { isPdfPrinter, isVirtualPrinter } from "@dk/print-template";
 import { Alert, Modal, PRINT_ERRORS } from "@/components/ui";
 import type { PrintJob } from "@/lib/types";
+import { isPcOnline, usePcCheck } from "@/lib/pc-check";
 
 /** A slip waits this long on the printer PC before staff are offered "Print again". */
 export const WAIT_ALERT_MS = 2 * 60_000;
@@ -19,7 +20,7 @@ export interface SitePrintStatus {
   waiting: WaitingSlip[];
 }
 
-/** Where slips of this site print now, and slips that did not reach a printer. Fresh on print-job changes and once a minute (PC heartbeat). */
+/** Where slips of this site print now, and slips that did not reach a printer. Fresh on print-job changes; the PC is asked whether it is there when the page opens and on "Check vehicle". */
 export function useSitePrintStatus(siteId: string) {
   const { org, can } = useApp();
   const [status, setStatus] = useState<SitePrintStatus | null>(null);
@@ -30,8 +31,9 @@ export function useSitePrintStatus(siteId: string) {
   }, [org, siteId, can]);
   useEffect(() => { setStatus(null); void load(); }, [load]);
   useLive(load, ["print_jobs"], { staleMs: 30_000 });
-  useEffect(() => { const t = setInterval(() => { if (!document.hidden) void load(); }, 60_000); return () => clearInterval(t); }, [load]);
-  return { status, reload: load };
+  const { askedAt } = usePcCheck(org?.organization_id, siteId, () => void load());
+  const shown = status?.printer ? { ...status, printer: { ...status.printer, online: isPcOnline(status.printer.last_seen, askedAt, status.printer.online) } } : status;
+  return { status: shown, reload: load };
 }
 
 /** "Prints on: Canon MF3010 · DESKTOP-N9G3G2B · ● Online" */

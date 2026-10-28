@@ -13,6 +13,7 @@ import { TicketPreview, previewValues, useReceipt } from "@/components/receipt";
 import { PrinterModelPicker } from "@/components/printer-model";
 import { AgentRequests } from "@/components/agent-requests";
 import { environmentFor, getModel, isPdfPrinter, isVirtualPrinter, matchPrinterModel } from "@dk/print-template";
+import { usePcCheck } from "@/lib/pc-check";
 
 export default function SettingsPage() {
   const { can } = useApp();
@@ -160,6 +161,7 @@ function PrintingCard() {
   }, [org]);
   useEffect(() => { void load(); }, [load]);
   useVisibleInterval(load, 20000);
+  usePcCheck(org?.organization_id, null, () => void load());
 
   async function pair() {
     if (!org || !site) return;

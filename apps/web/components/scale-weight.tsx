@@ -3,10 +3,10 @@
 // Nothing is read until the operator taps the button; then the server asks that PC, the PC answers with the STEADY weight,
 // and the reading is shown here. Saving the entry with it lets the server check that exactly this weight is saved.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-context";
 import { friendlyError } from "@/lib/errors";
+import { isPcOnline, usePcCheck } from "@/lib/pc-check";
 
 const SCALE_ERRORS: Record<string, string> = {
   unstable: "The weight is not steady. Wait until the vehicle stops moving, then tap Detect weight again.",
@@ -24,9 +24,9 @@ const SCALE_ERRORS: Record<string, string> = {
 };
 
 export interface ScaleReading { id: string; kg: number; at: string }
-interface SiteScale { available: boolean; online: boolean; pc: string | null }
+interface SiteScale { available: boolean; online: boolean; lastSeen: string | null; pc: string | null }
 
-/** Is there a weighing scale for this site (and is its PC online)? Refreshed every 30 s. */
+/** Is there a weighing scale for this site (and is its PC there)? The PC is asked when the page opens and on "Check vehicle". */
 export function useSiteScale(siteId: string): SiteScale | null {
   const { org } = useApp();
   const [s, setS] = useState<SiteScale | null>(null);
@@ -36,11 +36,11 @@ export function useSiteScale(siteId: string): SiteScale | null {
       .eq("organization_id", org.organization_id).eq("site_id", siteId).eq("status", "active");
     const rows = (data ?? []) as { label: string; approval: string | null; scale: { enabled?: boolean } | null; last_heartbeat_at: string | null }[];
     const a = rows.find((r) => (r.approval ?? "approved") === "approved" && r.scale?.enabled);
-    setS(a ? { available: true, online: !!a.last_heartbeat_at && Date.now() - Date.parse(a.last_heartbeat_at) < 120_000, pc: a.label } : { available: false, online: false, pc: null });
+    setS(a ? { available: true, online: false, lastSeen: a.last_heartbeat_at, pc: a.label } : { available: false, online: false, lastSeen: null, pc: null });
   }, [org, siteId]);
   useEffect(() => { void load(); }, [load]);
-  useVisibleInterval(load, 30_000);
-  return s;
+  const { askedAt } = usePcCheck(org?.organization_id, siteId, () => void load());
+  return s ? { ...s, online: s.available && isPcOnline(s.lastSeen, askedAt) } : s;
 }
 
 /**
