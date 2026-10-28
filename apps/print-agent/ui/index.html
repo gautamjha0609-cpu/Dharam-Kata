@@ -6,101 +6,94 @@
 <title>Dharam Kata Print Agent</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px system-ui,Segoe UI,sans-serif;background:#f4f7fa;color:#12263a}
-  header{background:#0B2D4C;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px} header img{width:44px;height:44px;border-radius:10px;flex:none} header a{color:#fff;font-size:12px;text-decoration:underline;opacity:.9;white-space:nowrap} header a:hover{opacity:1} header h1{margin:0;font-size:17px} header p{margin:2px 0 0;font-size:12px;opacity:.8}
-  button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #19B957;outline-offset:2px} button:disabled{opacity:.6;cursor:default}
-  @media (prefers-reduced-motion:no-preference){main>*{animation:in .18s ease-out} @keyframes in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}}
-  main{padding:16px;display:grid;gap:14px} .card{background:#fff;border:1px solid #dbe3ea;border-radius:10px;padding:14px}
-  label{display:block;font-weight:600;margin:8px 0 4px} input,select{width:100%;min-height:38px;padding:0 10px;border:1px solid #b9c5d1;border-radius:8px;font-size:14px}
-  button{min-height:38px;padding:0 14px;border:0;border-radius:8px;background:#19B957;color:#fff;font-weight:600;cursor:pointer;margin-top:10px}
+  header{background:#fff;border-bottom:3px solid #0B2D4C;padding:10px 16px;display:flex;align-items:center;gap:10px}
+  .brand{display:flex;align-items:center;gap:6px;flex:none} .brand img{height:40px;width:auto} .brand span{display:flex;flex-direction:column;font-weight:800;font-size:13px;line-height:1.05;color:#1c2a3a} .brand .v{color:#1f5ea8}
+  .app{flex:1;text-align:right;min-width:0} .app h1{margin:0;font-size:15px;color:#0B2D4C} .app p{margin:1px 0 0;font-size:11px;color:#51657a} .app a{color:#1f5ea8;font-size:12px}
+  main{padding:14px;display:grid;gap:12px} .card{background:#fff;border:1px solid #dbe3ea;border-radius:10px;padding:14px}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap} .title{font-weight:700;color:#0B2D4C}
+  label{display:block;font-weight:600;margin:10px 0 4px} input,select{width:100%;min-height:38px;padding:0 10px;border:1px solid #b9c5d1;border-radius:8px;font-size:14px}
+  button{min-height:36px;padding:0 14px;border:0;border-radius:8px;background:#19B957;color:#fff;font-weight:600;cursor:pointer} button:disabled{opacity:.6;cursor:default}
   button.ghost{background:#fff;color:#0B2D4C;border:1px solid #b9c5d1} button.danger{background:#fff;color:#b42318;border:1px solid #f1b0aa}
-  .badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:700} .ok{background:#dcf5e5;color:#116b34} .bad{background:#fde4e1;color:#9c2118}
-  .warn{background:#fff6e0;border-color:#f0c66b} .pick{display:flex;align-items:center;gap:8px;font-weight:400;margin:6px 0;padding:8px 10px;border:1px solid #dbe3ea;border-radius:8px;cursor:pointer} .pick input{width:auto;min-height:0}
-  .live{display:flex;align-items:center;gap:12px;margin-top:10px} .live .kg{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;color:#0B2D4C} .warn2{background:#fff6e0;color:#8a5a00}
-  .okt{color:#116b34;margin-top:8px} details summary{cursor:pointer;margin-top:10px} input[type=checkbox]{width:auto;min-height:0}
-  .err{color:#9c2118;margin-top:8px} .hint{color:#51657a;font-size:12px;margin-top:6px} ul{margin:6px 0 0;padding-left:18px} pre{margin:0;max-height:150px;overflow:auto;font-size:12px;background:#f4f7fa;padding:8px;border-radius:6px}
+  button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #19B957;outline-offset:2px}
+  .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:700} .ok{background:#dcf5e5;color:#116b34} .bad{background:#fde4e1;color:#9c2118} .mid{background:#fff6e0;color:#8a5a00}
+  .pick{display:flex;align-items:center;gap:8px;font-weight:400;margin:6px 0 0;padding:9px 10px;border:1px solid #dbe3ea;border-radius:8px;cursor:pointer} .pick input{width:auto;min-height:0}
+  .printer{font-size:16px;font-weight:700;margin-top:6px} .kg{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;color:#0B2D4C}
+  .err{color:#9c2118;margin-top:8px} .okt{color:#116b34;margin-top:8px} .muted{color:#51657a;font-size:12px;margin-top:6px;word-break:break-all}
+  details summary{cursor:pointer;margin-top:10px;color:#51657a;font-size:12px} input[type=checkbox]{width:auto;min-height:0}
+  .warn{background:#fff6e0;border-color:#f0c66b}
+  @media (prefers-reduced-motion:no-preference){main>*{animation:in .15s ease-out} @keyframes in{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}}
 </style>
 </head>
 <body>
-<header><img src="logo.png" alt="" width="44" height="44"><div style="flex:1"><h1>Dharam Kata Print Agent</h1><p id="ver"></p></div><a href="#" id="site" title="Open the website in your browser">Open the website ↗</a></header>
+<header>
+  <div class="brand" role="img" aria-label="The Valuation House"><img src="logo.png" alt=""><span aria-hidden="true"><b>The</b><b class="v">Valuation</b><b>House</b></span></div>
+  <div class="app"><h1>Dharam Kata Print Agent</h1><p><span id="ver"></span> · <a href="#" id="site" title="Open the website">Website ↗</a></p></div>
+</header>
 <main id="app"></main>
 <script>
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let chosen = '';
 let pick = '';
-let changing = false;
 let last = '';
-// real printers to choose from (OneNote, Fax, XPS, Print to file are not listed)
-const choiceList = (s, name) => s.choices.length
-  ? s.choices.map(c => `<label class="pick"><input type="radio" name="${name}" value="${esc(c.name)}" ${c.name===pick?'checked':''}> ${esc(c.name)}</label>`).join('')
-  : `<p class="err">No printer found on this PC.</p><p class="hint">Connect the printer and install its driver in Windows (Settings → Bluetooth &amp; devices → Printers &amp; scanners). It then appears here by itself.</p>`;
-const bindPick = (name) => document.querySelectorAll(`input[name="${name}"]`).forEach(i => i.addEventListener('change', e => { pick = e.target.value; }));
-// ---- weighing scale (optional) ----
-let scaleEdit = null; // the settings being edited (null = not editing)
+let scaleEdit = null; // scale settings being edited (null = not editing)
+
+// ---- weighing scale ----
 const fmtKg = (kg) => Number(kg).toLocaleString('en-IN') + ' kg';
-const LIVE = { stable: ['ok', '✓ Steady'], moving: ['warn2', '… Moving'], no_data: ['bad', 'No data'], stale: ['bad', 'No data'], overload: ['bad', 'Overload'], bad_unit: ['bad', 'Unit not kg / tonne'] };
+const LIVE = { stable: ['ok', 'Steady'], moving: ['mid', 'Moving'], no_data: ['bad', 'No data'], stale: ['bad', 'No data'], overload: ['bad', 'Overload'], bad_unit: ['bad', 'Wrong unit'] };
 function liveHtml(sc) {
   const l = sc.live;
   if (!l) return '';
   const [cls, label] = LIVE[l.kind] || ['bad', l.kind];
-  return `<div class="live"><span class="kg">${l.kg === null || l.kg === undefined ? '—' : esc(fmtKg(l.kg))}</span> <span class="badge ${cls}">${label}</span></div>
-    <p class="hint">Readings: ${l.frames}${l.rejected ? ` · rejected (bad checksum): ${l.rejected}` : ''}${l.lastDataAt ? ' · last data ' + new Date(l.lastDataAt).toLocaleTimeString() : ''}</p>
-    ${l.raw ? `<details><summary class="hint">What the indicator sends</summary><pre>${esc(l.raw)}</pre></details>` : ''}`;
+  return `<div class="row" style="justify-content:flex-start;margin-top:8px"><span class="kg">${l.kg === null || l.kg === undefined ? '—' : esc(fmtKg(l.kg))}</span><span class="badge ${cls}">${label}</span></div>`;
 }
 function updateLive(s) { const el = $('#scaleLive'); if (el && s.scale) el.innerHTML = liveHtml(s.scale); }
 function scaleCard(s) {
   const sc = s.scale;
   if (!sc) return '';
-  const c = sc.cfg;
-  const st = sc.status;
+  const c = sc.cfg, st = sc.status;
   if (!scaleEdit) {
-    if (!c.enabled) return `<div class="card"><b>Weighing scale (optional)</b>
-      <p class="hint">Connect the weighbridge indicator to this PC (RS-232 cable, USB-serial adapter or network) and the website gets a <b>Detect weight</b> button next to the weight. The weight is read only when someone taps it.</p>
-      <button class="ghost" id="scSetup">Set up the scale</button></div>`;
-    const where = c.source === 'tcp' ? `${esc(c.host)}:${esc(c.tcpPort)}` : c.source === 'sim' ? 'Simulator (test only)' : esc(c.port);
-    const proto = sc.protocols.find(p => p.id === (st && st.protocol || c.protocol));
-    return `<div class="card"><b>Weighing scale</b> <span class="badge ${st && st.link === 'open' ? 'ok' : 'bad'}">${st && st.link === 'open' ? '● Connected' : st && st.link === 'connecting' ? '○ Connecting…' : '○ Not connected'}</span>
-      <p class="hint">${where} · ${proto ? esc(proto.name) : 'format: automatic'}${c.source === 'serial' ? ` · ${esc(c.baud)} baud ${c.mask7 ? '7 bits + parity' : esc(c.framing)}` : ''} · indicator unit ${c.unit === 't' ? 'tonne' : 'kg'}</p>
+    if (!c.enabled) return `<div class="card"><div class="row"><span class="title">Weighing scale</span><button class="ghost" id="scSetup">Set up</button></div></div>`;
+    const on = st && st.link === 'open';
+    const where = c.source === 'tcp' ? `${esc(c.host)}:${esc(c.tcpPort)}` : c.source === 'sim' ? 'Simulator' : esc(c.port);
+    return `<div class="card"><div class="row"><span class="title">Weighing scale · ${where}</span><span class="badge ${on ? 'ok' : 'bad'}">${on ? 'Connected' : st && st.link === 'connecting' ? 'Connecting…' : 'Not connected'}</span></div>
       ${st && st.error ? `<p class="err">${esc(st.error.message)}</p>` : ''}
       <div id="scaleLive">${liveHtml(sc)}</div>
-      <button id="scTest">Read weight now (test)</button> <button class="ghost" id="scEdit">Change settings</button>
-      ${sc.test ? `<p class="${sc.test.ok ? 'okt' : 'err'}">${esc(sc.test.at)}: ${esc(sc.test.text)}</p>` : ''}
-      <p class="hint">The website reads the weight only when someone taps <b>Detect weight</b>. A weight is sent only when it is steady and fresh; a moving or old weight is never sent.</p></div>`;
+      <div class="btns"><button id="scTest">Read weight</button><button class="ghost" id="scEdit">Settings</button></div>
+      ${sc.test ? `<p class="${sc.test.ok ? 'okt' : 'err'}">${esc(sc.test.text)}</p>` : ''}</div>`;
   }
   const e = scaleEdit;
-  const ports = sc.ports.length ? sc.ports.map(p => `<option value="${esc(p.name)}" ${p.name === e.port ? 'selected' : ''}>${esc(p.label)}${p.usb ? ' · USB' : ''}</option>`).join('') : '';
+  const ports = sc.ports.map(p => `<option value="${esc(p.name)}" ${p.name === e.port ? 'selected' : ''}>${esc(p.label)}${p.usb ? ' · USB' : ''}</option>`).join('');
   const det = sc.detect;
-  return `<div class="card"><b>Weighing scale · settings</b>
-    <label>Connected through</label>
-    <label class="pick"><input type="radio" name="scsrc" value="serial" ${e.source === 'serial' ? 'checked' : ''}> COM port (RS-232 cable, RS-485 converter or USB-serial adapter)</label>
-    <label class="pick"><input type="radio" name="scsrc" value="tcp" ${e.source === 'tcp' ? 'checked' : ''}> Network (indicator or converter with an IP address)</label>
-    ${sc.sim ? `<label class="pick"><input type="radio" name="scsrc" value="sim" ${e.source === 'sim' ? 'checked' : ''}> Simulator (testing only)</label>` : ''}
+  const unit = `<label for="scUnit">Unit</label><select id="scUnit"><option value="kg" ${e.unit !== 't' ? 'selected' : ''}>kg</option><option value="t" ${e.unit === 't' ? 'selected' : ''}>tonne</option></select>`;
+  return `<div class="card"><span class="title">Weighing scale · settings</span>
+    <label class="pick"><input type="radio" name="scsrc" value="serial" ${e.source === 'serial' ? 'checked' : ''}> COM port (cable / USB adapter)</label>
+    <label class="pick"><input type="radio" name="scsrc" value="tcp" ${e.source === 'tcp' ? 'checked' : ''}> Network (IP address)</label>
+    ${sc.sim ? `<label class="pick"><input type="radio" name="scsrc" value="sim" ${e.source === 'sim' ? 'checked' : ''}> Simulator</label>` : ''}
     ${e.source === 'serial' ? `
       <label for="scPort">COM port</label>
-      ${ports ? `<select id="scPort"><option value="">Choose…</option>${ports}</select>` : `<p class="err">No COM port found.</p><p class="hint">Plug in the cable / USB adapter and install its driver (the port appears in Windows Device Manager → Ports (COM &amp; LPT)).</p>`}
-      <button class="ghost" id="scRefresh">Refresh list</button>
-      <label for="scUnit">The indicator shows weight in</label><select id="scUnit"><option value="kg" ${e.unit !== 't' ? 'selected' : ''}>kg</option><option value="t" ${e.unit === 't' ? 'selected' : ''}>tonne</option></select>
-      <button id="scDetect" ${det.running ? 'disabled' : ''}>${det.running ? 'Searching…' : 'Find settings automatically'}</button>
-      <label class="pick"><input type="checkbox" id="scAsk" ${e.ask ? 'checked' : ''}> Also ask the indicator (only for indicators that do not send by themselves; sends a read-only request)</label>
-      ${det.running ? `<p class="hint">${esc(det.text)}</p>` : ''}
-      ${det.result ? `<p class="${det.result.ok ? 'okt' : 'err'}">${esc(det.result.message)}</p>${det.result.sample ? `<pre>${esc(det.result.sample)}</pre>` : ''}` : ''}
-      <details ${e.manual ? 'open' : ''} id="scAdv"><summary>Set manually</summary>
-        <label for="scBaud">Speed (baud)</label><select id="scBaud">${[1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200].map(b => `<option ${Number(e.baud) === b ? 'selected' : ''}>${b}</option>`).join('')}</select>
-        <label for="scFraming">Data bits / parity / stop bits</label><select id="scFraming">
-          <option value="8N1" ${!e.mask7 && e.framing === '8N1' ? 'selected' : ''}>8 N 1 (most indicators)</option>
+      ${ports ? `<select id="scPort"><option value="">Choose…</option>${ports}</select>` : `<p class="err">No COM port found.</p>`}
+      ${unit}
+      <div class="btns"><button id="scDetect" ${det.running ? 'disabled' : ''}>${det.running ? 'Searching…' : 'Find automatically'}</button><button class="ghost" id="scRefresh">Refresh ports</button></div>
+      ${det.running ? `<p class="muted">${esc(det.text)}</p>` : ''}
+      ${det.result ? `<p class="${det.result.ok ? 'okt' : 'err'}">${esc(det.result.message)}</p>` : ''}
+      <details ${e.manual ? 'open' : ''} id="scAdv"><summary>Manual settings</summary>
+        <label class="pick"><input type="checkbox" id="scAsk" ${e.ask ? 'checked' : ''}> Ask the indicator for the weight</label>
+        <label for="scBaud">Baud</label><select id="scBaud">${[1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200].map(b => `<option ${Number(e.baud) === b ? 'selected' : ''}>${b}</option>`).join('')}</select>
+        <label for="scFraming">Format</label><select id="scFraming">
+          <option value="8N1" ${!e.mask7 && e.framing === '8N1' ? 'selected' : ''}>8 N 1</option>
           <option value="7E1" ${e.mask7 ? 'selected' : ''}>7 E 1 / 7 O 1</option>
           <option value="8E1" ${e.framing === '8E1' ? 'selected' : ''}>8 E 1</option>
           <option value="8O1" ${e.framing === '8O1' ? 'selected' : ''}>8 O 1</option></select>
         ${protoSelect(sc, e)}</details>` : ''}
     ${e.source === 'tcp' ? `
-      <label for="scHost">IP address</label><input id="scHost" value="${esc(e.host || '')}" placeholder="e.g. 192.168.1.50">
-      <label for="scTcp">Port</label><input id="scTcp" inputmode="numeric" value="${esc(e.tcpPort || '')}" placeholder="e.g. 4001">
-      <label for="scUnit">The indicator shows weight in</label><select id="scUnit"><option value="kg" ${e.unit !== 't' ? 'selected' : ''}>kg</option><option value="t" ${e.unit === 't' ? 'selected' : ''}>tonne</option></select>
-      ${protoSelect(sc, e)}` : ''}
+      <label for="scHost">IP address</label><input id="scHost" value="${esc(e.host || '')}" placeholder="192.168.1.50">
+      <label for="scTcp">Port</label><input id="scTcp" inputmode="numeric" value="${esc(e.tcpPort || '')}" placeholder="4001">
+      ${unit}${protoSelect(sc, e)}` : ''}
     <div id="scErr" class="err"></div>
-    <button id="scSave">Save</button> <button class="ghost" id="scCancel">Cancel</button> ${c.enabled ? '<button class="danger" id="scOff">Turn the scale off</button>' : ''}</div>`;
+    <div class="btns"><button id="scSave">Save</button><button class="ghost" id="scCancel">Cancel</button>${c.enabled ? '<button class="danger" id="scOff">Turn off</button>' : ''}</div></div>`;
 }
-const protoSelect = (sc, e) => `<label for="scProto">Data format</label><select id="scProto"><option value="auto">Automatic (recognised from the data)</option>${sc.protocols.map(p => `<option value="${p.id}" ${e.protocol === p.id ? 'selected' : ''}>${esc(p.name)} — ${esc(p.families)}</option>`).join('')}</select>`;
+const protoSelect = (sc, e) => `<label for="scProto">Indicator</label><select id="scProto"><option value="auto">Automatic</option>${sc.protocols.map(p => `<option value="${p.id}" ${e.protocol === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>`;
 function readScaleForm() {
   const e = scaleEdit;
   const v = (id) => { const el = $(id); return el ? el.value : undefined; };
@@ -139,96 +132,68 @@ function bindScale(s) {
     if (!r.ok) { $('#scErr').textContent = r.error || 'Could not save.'; return; }
     scaleEdit = null; render(true);
   });
-  on('#scOff', async () => { if (confirm('Turn the scale off? The website then has no Detect weight button for this site.')) { await window.agent.scaleSave({ ...sc.cfg, enabled: false }); scaleEdit = null; render(true); } });
+  on('#scOff', async () => { if (confirm('Turn the weighing scale off?')) { await window.agent.scaleSave({ ...sc.cfg, enabled: false }); scaleEdit = null; render(true); } });
 }
 
 async function render(force) {
   const s = await window.agent.state();
-  // the live weight changes many times a second: it is updated in place, the rest of the page only when something else changed
-  const snap = JSON.stringify({ ...s, scale: s.scale ? { ...s.scale, live: s.scale.live ? s.scale.live.kind : null } : null });
+  // the live weight changes many times a second: it is updated in place, the rest only when something else changed
+  const snap = JSON.stringify({ ...s, log: null, scale: s.scale ? { ...s.scale, live: s.scale.live ? s.scale.live.kind : null } : null });
   if (!force && snap === last) { updateLive(s); return; }
   const typing = document.activeElement && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) && $('#app').contains(document.activeElement);
   if (!force && typing) { updateLive(s); return; }
   last = snap;
-  $('#ver').textContent = 'Version ' + s.version + ' · ' + s.host;
-  try { $('#site').textContent = new URL(s.server).host + ' ↗'; } catch (e) { /* keep the plain label */ }
+  $('#ver').textContent = 'Version ' + s.version;
+
+  // ---- not paired: the printer list is shown ONLY here ----
   if (!s.paired) {
     if (pick && !s.choices.some(c => c.name === pick)) pick = '';
-    $('#app').innerHTML = `<div class="card"><b>Step 1 · Choose the printer for slips</b>
-      <p class="hint">This PC prints on this one printer only. It can be changed later (an owner approves the change on the website).</p>
-      ${choiceList(s, 'first')}</div>
-      <div class="card"><b>Step 2 · Pair this PC</b>
-      <p class="hint">In the website go to Settings → Printing → Generate pairing code, then enter it here. The code works once and expires in 10 minutes.</p>
-      <label for="code">Pairing code</label><input id="code" autocomplete="off" autocapitalize="characters" placeholder="e.g. 9F3A12BC">
-      <label for="label">Name of this PC</label><input id="label" value="${esc(s.host)}">
-      <button id="pairBtn">Pair</button><div id="perr" class="err"></div>
-      <p class="hint">If another PC already prints for this site, the owner must approve this PC on the website before it prints.</p>
-      <p class="hint">Server: ${esc(s.server)}</p></div>`;
-    bindPick('first');
+    $('#app').innerHTML = `<div class="card"><span class="title">1 · Printer</span>
+      ${s.choices.length ? s.choices.map(c => `<label class="pick"><input type="radio" name="prn" value="${esc(c.name)}" ${c.name === pick ? 'checked' : ''}> ${esc(c.name)}</label>`).join('') : `<p class="err">No printer found on this PC.</p>`}</div>
+      <div class="card"><span class="title">2 · Pair</span>
+      <label for="code">Pairing code</label><input id="code" autocomplete="off" autocapitalize="characters" placeholder="From the website: Settings → Printing">
+      <label for="label">PC name</label><input id="label" value="${esc(s.host)}">
+      <div class="btns"><button id="pairBtn">Pair</button></div><div id="perr" class="err"></div></div>`;
+    document.querySelectorAll('input[name="prn"]').forEach(i => i.addEventListener('change', e => { pick = e.target.value; }));
     $('#pairBtn').onclick = async () => {
-      if (!pick) { $('#perr').textContent = 'First choose the printer in step 1.'; return; }
+      if (!pick) { $('#perr').textContent = 'Choose the printer first.'; return; }
       $('#pairBtn').disabled = true; $('#perr').textContent = '';
       const r = await window.agent.pair($('#code').value, $('#label').value, pick);
       if (!r.ok) { $('#perr').textContent = r.error; $('#pairBtn').disabled = false; } else { pick = ''; render(true); }
     };
     return;
   }
-  const req = s.request;
-  const waitingPrinter = req && req.kind === 'change_printer' ? req.printer : null;
-  const needChoice = s.approval === 'approved' && (!s.printer || s.printerMissing || s.printerVirtual);
+
+  // ---- paired: only THE printer of this PC, no list ----
   let printerCard;
   if (s.approval === 'pending') {
-    printerCard = `<div class="card warn"><b>Waiting for approval</b>
-      <p>Another PC prints slips for this site now. An owner or administrator must approve this PC in the website (Settings → Printing). Until then this PC prints nothing.</p>
-      ${req && req.printer ? `<p class="hint">Printer asked for: <b>${esc(req.printer)}</b></p>` : ''}</div>`;
+    printerCard = `<div class="card warn"><span class="title">Waiting for approval</span>
+      <p class="muted">Approve this PC on the website (Settings → Printing).</p></div>`;
   } else {
-    const head = s.printerMissing
-      ? `<p class="err"><b>Selected printer not found — choose it again.</b> “${esc(s.printer)}” is no longer installed on this PC (it may have been renamed, e.g. “(Copy 1)”). Slips are NOT printed on any other printer.</p>`
-      : s.printerVirtual ? `<p class="err"><b>“${esc(s.printer)}” is not a real printer.</b> No paper comes out. Choose the real printer.</p>`
-      : s.printer ? `<p>Slips print on <b>${esc(s.printer)}</b> <span class="badge ok">✓ Approved</span></p>`
-      : `<p class="err"><b>No printer chosen for this PC yet.</b> Choose the printer that prints slips.</p>`;
-    printerCard = `<div class="card ${needChoice ? 'warn' : ''}"><b>Printer for slips</b>${head}
-      ${waitingPrinter ? `<p class="hint">Waiting for approval on the website to change to <b>${esc(waitingPrinter)}</b>. Until then nothing changes.</p>` : ''}
-      ${changing || needChoice ? `${choiceList(s, 'change')}<button id="reqBtn">Ask to use this printer</button>${changing ? ' <button class="ghost" id="reqCancel">Cancel</button>' : ''}<div id="rerr" class="err"></div>
-        <p class="hint">An owner or administrator approves the change on the website.</p>` : `<button class="ghost" id="chg">Change printer</button>`}</div>`;
+    const problem = s.printerMissing ? `“${esc(s.printer)}” is not installed on this PC any more. Unpair and pair again to choose the printer.`
+      : s.printerVirtual ? `“${esc(s.printer)}” is not a real printer. Unpair and pair again to choose the printer.`
+      : !s.printer ? 'No printer set. Unpair and pair again to choose the printer.' : '';
+    printerCard = `<div class="card ${problem ? 'warn' : ''}"><div class="row"><span class="title">Printer</span>${problem ? '<span class="badge bad">Problem</span>' : '<span class="badge ok">Ready</span>'}</div>
+      ${s.printer ? `<div class="printer">${esc(s.printer)}</div>` : ''}
+      ${problem ? `<p class="err">${problem}</p>` : `<div class="btns"><button class="ghost" id="smp">Test print</button><button class="ghost" id="cal">Calibration sheet</button></div><div id="tmsg" class="muted"></div>`}</div>`;
   }
-  if (!chosen && s.printers.length) chosen = s.printer && s.printers.includes(s.printer) ? s.printer : s.printers[0];
   $('#app').innerHTML = `
+    <div class="card"><div class="row"><span class="title">${esc(s.label)}</span><span class="badge ${s.connected ? 'ok' : 'bad'}">${s.connected ? 'Online' : 'Offline'}</span></div>
+      ${s.lastError ? `<p class="err">${esc(s.lastError)}</p>` : ''}
+      ${s.lastJob ? `<p class="muted">Last slip: ${esc(s.lastJob)}</p>` : ''}</div>
     ${printerCard}
-    <div class="card"><b>${esc(s.label)}</b> <span class="badge ${s.connected ? 'ok' : 'bad'}">${s.connected ? '● Connected' : '○ Not connected'}</span>
-      ${s.lastError ? `<div class="err">${esc(s.lastError)}</div>` : ''}
-      <p class="hint">Jobs sent to Windows since start: ${s.jobsPrinted}${s.lastJob ? ' · last: ' + esc(s.lastJob) : ''}</p>
-      <p class="hint">This agent runs in the background and starts with Windows. Closing this window keeps it running (see the tray icon).</p></div>
     ${scaleCard(s)}
-    <div class="card"><b>Test and calibration</b>
-      <p class="hint">Print the calibration sheet after setting up the printer, lay it over a real slip, then adjust X/Y in the website (Settings → Printing).</p>
-      ${s.printers.length ? `<label for="pr">Printer</label><select id="pr">${s.printers.map(p => `<option ${p===chosen?'selected':''}>${esc(p)}</option>`).join('')}</select>
-      <button class="ghost" id="cal">Print calibration sheet</button> <button class="ghost" id="smp">Print sample (TEST)</button><div id="tmsg" class="hint"></div>` : `<p class="err">No printer found on this PC.</p><p class="hint">Install the printer's driver in Windows (Settings → Bluetooth &amp; devices → Printers &amp; scanners). It then appears here by itself.</p>`}
-      <p class="hint">“Sent to Windows print queue” means Windows accepted the job. It does not prove paper came out.</p></div>
-    <div class="card"><b>Daily backup (this PC)</b>
-      <p class="hint">After every print, today's invoices are saved into one Excel file named with the date, inside <b>FY → month</b> folders. It works even without internet.</p>
-      <p class="hint">Folder: <b>${esc(s.backup.root)}</b><br>Days backed up: <b>${s.backup.days}</b>${s.backup.latest ? '<br>Latest file: ' + esc(s.backup.latest) : ''}</p>
-      <button class="ghost" id="bopen">Open backup folder</button> <button class="ghost" id="bchoose">Change folder</button>
-      <p class="hint">If a day's Excel file is open in Excel it is refreshed on the next print; no data is lost. Copy this folder to a pen drive or cloud drive for an extra safe copy.</p></div>
-    <div class="card"><b>Activity</b><pre>${esc(s.log.join('\n') || 'Nothing yet')}</pre></div>
-    <div class="card"><button class="ghost" id="logopen">Show the log file</button> <button class="danger" id="unpair">Unpair this PC</button><p class="hint">The log file helps support find a problem. It never contains passwords.</p></div>`;
+    <div class="card"><div class="row"><span class="title">Backup</span><span class="muted" style="margin:0">${s.backup.days} day(s)</span></div>
+      <p class="muted">${esc(s.backup.root)}</p>
+      <div class="btns"><button class="ghost" id="bopen">Open folder</button><button class="ghost" id="bchoose">Change folder</button></div></div>
+    <div class="card"><div class="btns" style="margin:0"><button class="danger" id="unpair">Unpair</button><button class="ghost" id="logopen">Log file</button></div></div>`;
   bindScale(s);
-  $('#pr')?.addEventListener('change', e => chosen = e.target.value);
-  bindPick('change');
-  if ($('#chg')) $('#chg').onclick = () => { changing = true; pick = ''; render(true); };
-  if ($('#reqCancel')) $('#reqCancel').onclick = () => { changing = false; render(true); };
-  if ($('#reqBtn')) $('#reqBtn').onclick = async () => {
-    if (!pick) { $('#rerr').textContent = 'Choose a printer first.'; return; }
-    $('#reqBtn').disabled = true;
-    const r = await window.agent.requestPrinter(pick);
-    if (!r.ok) { $('#rerr').textContent = r.error; $('#reqBtn').disabled = false; } else { changing = false; pick = ''; render(true); }
-  };
-  const t = (kind) => async () => { $('#tmsg').textContent = 'Sending…'; const r = await window.agent.testPrint($('#pr').value, kind); $('#tmsg').textContent = r.ok ? 'Sent to Windows print queue.' : 'Failed: ' + r.error; };
+  const t = (kind) => async () => { $('#tmsg').textContent = 'Sending…'; const r = await window.agent.testPrint(s.printer, kind); $('#tmsg').textContent = r.ok ? 'Sent to the printer.' : 'Failed: ' + r.error; };
+  if ($('#smp')) { $('#smp').onclick = t('sample'); $('#cal').onclick = t('calibration'); }
   $('#bopen').onclick = () => window.agent.backupOpen();
   $('#logopen').onclick = () => window.agent.logOpen();
   $('#bchoose').onclick = async () => { const r = await window.agent.backupChoose(); if (r.ok) render(true); };
-  if ($('#cal')) { $('#cal').onclick = t('calibration'); $('#smp').onclick = t('sample'); }
-  $('#unpair').onclick = async () => { if (confirm('Unpair this PC? It will stop printing invoices until paired again.')) { await window.agent.unpair(); render(true); } };
+  $('#unpair').onclick = async () => { if (confirm('Unpair this PC? It stops printing until it is paired again.')) { await window.agent.unpair(); render(true); } };
 }
 $('#site').onclick = (e) => { e.preventDefault(); window.agent.websiteOpen(); };
 window.agent.onState(() => render(false));

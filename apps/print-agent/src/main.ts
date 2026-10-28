@@ -531,6 +531,9 @@ ipcMain.handle("unpair", () => {
 });
 
 ipcMain.handle("test-print", async (_e, printerName: string, kind: "calibration" | "sample") => {
+  // a paired PC prints only on its own printer (another printer is chosen by unpairing and pairing again)
+  const own = loadConfig(DEFAULT_SERVER).printer;
+  if (loadToken() && own && printerName !== own) return { ok: false, error: "This PC prints only on its own printer." };
   const installed = await printer.list();
   if (!installed.includes(printerName)) return { ok: false, error: "That printer is not installed on this PC." };
   const layout = ticketPreset();
