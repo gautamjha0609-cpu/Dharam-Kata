@@ -11,19 +11,29 @@ import { supabase } from "@/lib/supabase";
 export const PC_CHECK_EVENT = "dk-pc-check";
 export const askPcs = () => { if (typeof window !== "undefined") window.dispatchEvent(new Event(PC_CHECK_EVENT)); };
 
+// One question for the whole page: parts of a page that ask at the same moment (printer status, Detect weight) share it.
+let shared: { key: string; at: number; asked: Promise<string | null> } | null = null;
+function askOnce(key: string, run: () => Promise<string | null>): Promise<string | null> {
+  if (shared && shared.key === key && Date.now() - shared.at < 3000) return shared.asked;
+  shared = { key, at: Date.now(), asked: run() };
+  return shared.asked;
+}
+
 export function usePcCheck(orgId: string | null | undefined, siteId: string | null | undefined, onAnswered: () => void, opts: { admin?: boolean } = {}) {
   const [askedAt, setAskedAt] = useState<string | null>(null);
   const done = useRef(onAnswered);
   done.current = onAnswered;
   const ask = useCallback(async () => {
     if (!opts.admin && !orgId) return;
-    const { data } = opts.admin
-      ? await supabase().rpc("admin_check_pcs")
-      : await supabase().rpc("check_pcs", { p_org: orgId!, p_site: siteId ?? null });
-    if (typeof data === "string") setAskedAt(data);
-    // most PCs answer within ~1 s; a slow network gets a second look
+    const asked = await askOnce(opts.admin ? "admin" : `${orgId}:${siteId ?? ""}`, async () => {
+      const { data } = opts.admin
+        ? await supabase().rpc("admin_check_pcs")
+        : await supabase().rpc("check_pcs", { p_org: orgId!, p_site: siteId ?? null });
+      return typeof data === "string" ? data : null;
+    });
+    if (asked) setAskedAt(asked);
+    // a PC answers within ~1-2 s: one look after that is enough (the next "Check vehicle" asks again)
     setTimeout(() => done.current(), 2500);
-    setTimeout(() => done.current(), 7000);
   }, [orgId, siteId, opts.admin]);
   useEffect(() => { void ask(); }, [ask]);
   useEffect(() => {

@@ -5,6 +5,7 @@ import { ADMIN_PATH } from "@/lib/admin-path";
 import { checkGstin, checkMobile, checkPan, daysLeft } from "@dk/domain";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-context";
+import { friendlyError } from "@/lib/errors";
 import { fmtDateTime } from "@/lib/format";
 import { Select } from "@/components/ios";
 import { Alert, Modal, PageHead } from "@/components/ui";
@@ -262,10 +263,27 @@ function FirmUsers({ orgId, onMsg }: { orgId: string; onMsg: (m: Msg) => void })
   const [members, setMembers] = useState<Member[] | null>(null);
   const [openLink, setOpenLink] = useState<{ url: string; who: string } | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
+  // where each user is signed in (2 devices at most); "Sign out of all devices" frees both, so the user can log in on 2 new devices
+  const [devices, setDevices] = useState<Record<string, { name: string; last_active: string }[]>>({});
+  const [signingOut, setSigningOut] = useState<string | null>(null);
   const load = useCallback(async () => {
-    const { data } = await supabase().rpc("platform_list_members", { p_org: orgId });
-    setMembers((data ?? []) as unknown as Member[]);
+    const [m, d] = await Promise.all([
+      supabase().rpc("platform_list_members", { p_org: orgId }),
+      supabase().rpc("admin_user_devices", { p_org: orgId }),
+    ]);
+    setMembers((m.data ?? []) as unknown as Member[]);
+    const map: Record<string, { name: string; last_active: string }[]> = {};
+    for (const r of ((d.data ?? []) as unknown as { user_id: string; devices: { name: string; last_active: string }[] }[])) map[r.user_id] = r.devices;
+    setDevices(map);
   }, [orgId]);
+  async function signOutAll(m: Member) {
+    if (!confirm(`Sign ${m.full_name || m.login_id} out of all devices? Every device is logged out and the user can log in on 2 new devices.`)) return;
+    setSigningOut(m.user_id);
+    const { error } = await supabase().rpc("admin_sign_out_all_devices", { p_org: orgId, p_user: m.user_id });
+    setSigningOut(null);
+    onMsg(error ? { k: "error", t: friendlyError(error) } : { k: "ok", t: `${m.full_name || m.login_id} is signed out of all devices and can log in on 2 new devices.` });
+    void load();
+  }
   useEffect(() => { void load(); }, [load]);
 
   async function act(user_id: string, kind: "set_password" | "set_login") {
@@ -291,11 +309,13 @@ function FirmUsers({ orgId, onMsg }: { orgId: string; onMsg: (m: Msg) => void })
     <ul className="mt-3 divide-y divide-slate-100 border-t border-slate-100 text-sm">
       {members.map((m) => (
         <li key={m.user_id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-          <span><b>{m.full_name || m.login_id}</b> <span className="text-slate-600">({m.login_id}) · {m.role}{m.status === "disabled" ? " · disabled" : ""}</span></span>
+          <span><b>{m.full_name || m.login_id}</b> <span className="text-slate-600">({m.login_id}) · {m.role}{m.status === "disabled" ? " · disabled" : ""}</span>
+            <span className="block text-xs text-slate-600">Devices ({(devices[m.user_id] ?? []).length}/2): {(devices[m.user_id] ?? []).map((d) => d.name).join(", ") || "none"}</span></span>
           <span className="flex flex-wrap gap-2">
             <button className="btn-primary !min-h-[36px]" disabled={opening === m.user_id || m.status === "disabled"} onClick={() => void openAs(m)}>{opening === m.user_id ? "Opening…" : "Open as this user"}</button>
             <button className="btn-ghost !min-h-[36px]" onClick={() => void act(m.user_id, "set_login")}>Change login ID</button>
             <button className="btn-ghost !min-h-[36px]" onClick={() => void act(m.user_id, "set_password")}>Set password</button>
+            <button className="btn-danger !min-h-[36px]" disabled={signingOut === m.user_id || (devices[m.user_id] ?? []).length === 0} onClick={() => void signOutAll(m)}>{signingOut === m.user_id ? "Signing out…" : "Sign out of all devices"}</button>
           </span>
         </li>
       ))}
