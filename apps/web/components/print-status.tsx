@@ -41,9 +41,10 @@ export function PrintTarget({ status }: { status: SitePrintStatus | null }) {
   const { can } = useApp();
   if (!status) return null;
   const p = status.printer;
-  const fix = can("print.route.manage") ? <Link href="/settings" className="underline">Settings → Printing</Link> : "your owner or administrator";
-  if (!p) return <Alert kind="warn">No printer is set up for this site, so slips will not print. Set one up in {fix}.</Alert>;
-  if (!p.pc_active || !p.active) return <Alert kind="error">The printer PC “{p.pc}” was removed, so slips will not print. Choose a printer in {fix}.</Alert>;
+  const manage = can("print.route.manage");
+  const fix = (todo: string) => manage ? <>{todo} in <Link href="/settings" className="underline">Settings → Printing</Link>.</> : <>Ask your owner or administrator to {todo.toLowerCase()}.</>;
+  if (!p) return <Alert kind="warn">No printer is set up for this site, so slips will not print. {fix("Set one up")}</Alert>;
+  if (!p.pc_active || !p.active) return <Alert kind="error">The printer PC “{p.pc}” was removed, so slips will not print. {fix("Choose a printer")}</Alert>;
   const fake = isVirtualPrinter(p.os_name);
   return (
     <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border px-3 py-2 text-sm ${fake ? "border-red-200 bg-red-50 text-red-800" : "border-slate-200 bg-white"}`} role="status">
@@ -52,7 +53,7 @@ export function PrintTarget({ status }: { status: SitePrintStatus | null }) {
       {p.online
         ? <span className="badge bg-green-100 text-green-800">● Online</span>
         : <span className="badge bg-amber-100 text-amber-900">○ Offline{p.last_seen ? ` since ${fmtDateTime(p.last_seen)}` : ""}</span>}
-      {fake && <span className="w-full text-xs font-medium">✕ This is not a physical printer. No paper comes out. Choose a physical printer in {fix}.</span>}
+      {fake && <span className="w-full text-xs font-medium">✕ This is not a physical printer. No paper comes out. {fix("Choose a physical printer")}</span>}
       {!p.online && !fake && <span className="w-full text-xs text-amber-900">Slips wait until the Print Agent on {p.pc} is running and online.</span>}
     </div>
   );

@@ -3,10 +3,13 @@
 ; folders, shortcuts, start-up entries and uninstall entries deleted. We never run an old uninstaller (it can be missing, damaged or hang forever).
 ; The user's own data (pairing, settings, backups) is in other folders and is never touched.
 !macro customInit
+  ; every program folder of every version. A program that was just closed keeps its files locked for a moment (Windows releases them only
+  ; after all its processes have ended), so close + delete is repeated until no folder is left (at most ~10 s).
+  StrCpy $4 0
+  dkKill:
   nsExec::Exec 'taskkill /F /T /IM "Dharam Kata Print Agent*"'
   Pop $0
   Sleep 500
-  ; every program folder of every version
   FindFirst $0 $1 "$LOCALAPPDATA\Programs\dharam-kata-print-agent*"
   dkFolders:
     ${If} $1 != ""
@@ -15,6 +18,13 @@
       Goto dkFolders
     ${EndIf}
   FindClose $0
+  FindFirst $0 $1 "$LOCALAPPDATA\Programs\dharam-kata-print-agent*"
+  FindClose $0
+  IntOp $4 $4 + 1
+  ${If} $1 != ""
+  ${AndIf} $4 < 20
+    Goto dkKill
+  ${EndIf}
   ; shortcuts of every version
   Delete "$DESKTOP\Dharam Kata Print Agent*.lnk"
   Delete "$APPDATA\Microsoft\Windows\Start Menu\Programs\Dharam Kata Print Agent*.lnk"

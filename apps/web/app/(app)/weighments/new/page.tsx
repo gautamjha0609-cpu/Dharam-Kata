@@ -233,7 +233,9 @@ export default function WeighmentPage() {
         <div className="mb-4 space-y-2">
           <Alert kind="ok">
             {done.kind === "close" ? "Closed" : "Opened"} <b>{done.inv.vehicle_display}</b> — invoice <b>{done.inv.invoice_number}</b> · amount <b>{inr(done.inv.fee_total)}</b>.{" "}
-            {done.kind === "new" ? "The opening slip is printing. When the vehicle comes back, check its number again to close this entry." : "The closing slip is printing (same invoice number)."}
+            {done.job?.status === "not_configured" || done.job?.status === "routing_error"
+              ? (done.kind === "new" ? "No slip was printed. When the vehicle comes back, check its number again to close this entry." : "No slip was printed.")
+              : done.kind === "new" ? "The opening slip is printing. When the vehicle comes back, check its number again to close this entry." : "The closing slip is printing (same invoice number)."}
           </Alert>
           <div className="flex flex-wrap items-center gap-2 text-sm"><span>Printing:</span><PrintBadge status={done.job?.status} />
             <Link href={`/invoices/${done.inv.id}`} className="underline">View invoice</Link></div>

@@ -90,6 +90,7 @@ export const PRINT_ERRORS: Record<string, string> = {
   invalid_template: "The receipt layout is invalid. Re-publish it in Settings → Receipt layout.",
   invalid_payload: "The invoice data was incomplete.",
   lease_expired_after_submit: "The printer PC stopped responding while printing. Check the paper before reprinting so it is not printed twice.",
+  print_timeout: "Windows on the printer PC did not confirm this slip within a minute; it may still have printed. Check the paper before reprinting so it is not printed twice.",
   max_attempts: "The printer PC could not complete this job after several tries.",
   printer_inactive: "The assigned printer is switched off in settings.",
   printer_not_selected: "The printer PC refused this slip because it is not the printer approved for that PC. Check Settings → Printing, then print again.",

@@ -57,6 +57,9 @@ const MESSAGES: Record<string, string> = {
 export function friendlyError(err: unknown): string {
   const msg = typeof err === "object" && err && "message" in err ? String((err as { message: unknown }).message) : String(err ?? "");
   for (const [code, text] of Object.entries(MESSAGES)) if (msg.includes(code)) return text;
+  // signed out elsewhere ("Sign out of all devices") or the sign-in has run out: the database refuses the login token
+  // (a signed-out browser is refused every function: "permission denied for function ...")
+  if (/JWT|PGRST30[1-3]|Auth session missing|Refresh Token|refresh_token|permission denied for function/i.test(msg)) return MESSAGES.not_authenticated!;
   if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) return "Cannot reach the server. Check your connection and try again.";
   return "Something went wrong. Please try again.";
 }

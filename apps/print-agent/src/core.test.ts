@@ -13,7 +13,7 @@ const baseJob = (over: Partial<ClaimedJob> = {}): ClaimedJob => ({
   ...over,
 });
 
-function harness(opts: { job?: ClaimedJob | null; installed?: string[]; printOk?: boolean; eventFailsFor?: EventStatus[]; rejectEvents?: boolean; preflight?: string | null; selected?: (refresh: boolean) => Promise<string | null> } = {}) {
+function harness(opts: { job?: ClaimedJob | null; installed?: string[]; printOk?: boolean; eventFailsFor?: EventStatus[]; rejectEvents?: boolean; preflight?: string | null; printError?: string; selected?: (refresh: boolean) => Promise<string | null> } = {}) {
   const events: { status: EventStatus; code?: string }[] = [];
   const printed: { html: string; deviceName: string; w: number; h: number; copies: number; fileName?: string }[] = [];
   let pending: PendingAck[] = [];
@@ -32,7 +32,7 @@ function harness(opts: { job?: ClaimedJob | null; installed?: string[]; printOk?
     check: async () => opts.preflight ?? null,
     print: async (html, o) => {
       printed.push({ html, deviceName: o.deviceName, w: o.widthMm, h: o.heightMm, copies: o.copies, fileName: o.fileName });
-      return opts.printOk === false ? { ok: false, error: "printer offline" } : { ok: true };
+      return opts.printError ? { ok: false, error: opts.printError } : opts.printOk === false ? { ok: false, error: "printer offline" } : { ok: true };
     },
   };
   const journal: Journal = {
@@ -209,5 +209,14 @@ describe("sanitizeValues", () => {
     const o = harness();
     await o.core.tick();
     expect(o.printed[0]!.fileName).not.toContain("duplicate");
+  });
+
+  it("Windows not answering within the time limit is NOT reported as 'did not print' (it may still print): print_timeout, never printed again here", async () => {
+    const h = harness({ printError: "print timeout" });
+    expect(await h.core.tick()).toBe("failed");
+    expect(h.events.at(-1)).toEqual({ status: "failed", code: "print_timeout" });
+    expect(h.submitted.has(baseJob().id)).toBe(true);
+    expect(await h.core.tick()).toBe("skipped_duplicate"); // claimed again by mistake: confirmed, not printed a second time
+    expect(h.printed).toHaveLength(1);
   });
 });

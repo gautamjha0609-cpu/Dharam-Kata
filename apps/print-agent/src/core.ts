@@ -190,7 +190,13 @@ export class AgentCore {
     // 4. hand to the OS. If we crash after this line the server turns the job UNKNOWN (never auto-retried).
     await this.report(job, "submitting");
     const res = await this.printer.print(html, { deviceName: job.printer.os_name, widthMm: layout.paper.w, heightMm: layout.paper.h, copies: layout.copies, fileName: this.pdfName(values, job.job_type) });
-    if (!res.ok) return this.fail(job, mapPrintError(res.error));
+    if (!res.ok) {
+      const code = mapPrintError(res.error);
+      // Windows did not answer in time: the slip may still come out, so this PC never prints it again and the server marks it
+      // "unknown" (check the paper first) instead of offering "Print again".
+      if (code === "print_timeout") this.journal.markSubmitted(job.id);
+      return this.fail(job, code);
+    }
     if (res.note) this.log(res.note);
     this.journal.markSubmitted(job.id);
     await this.report(job, "submitted_to_spooler");
@@ -204,6 +210,7 @@ function isRejected(e: unknown): boolean {
 
 export function mapPrintError(raw?: string): string {
   const m = (raw ?? "").toLowerCase();
+  if (m.includes("timeout")) return "print_timeout";
   if (m.includes("invalid") && m.includes("printer")) return "printer_invalid";
   if (m.includes("cancel")) return "print_cancelled";
   if (m.includes("offline")) return "printer_offline";
