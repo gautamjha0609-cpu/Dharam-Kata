@@ -35,6 +35,7 @@ const MESSAGES: Record<string, string> = {
   invalid_extra_number: "One of the extra fields must be a number.",
   unknown_custom_field: "An extra field is switched off or no longer exists. Refresh the page.",
   amount_exceeds_outstanding: "Amount is more than the outstanding balance.",
+  payment_in_future: "The payment date cannot be in the future.",
   invoice_not_issued: "This entry is already deleted.",
   agent_not_found: "This printer PC was not found. Refresh the page.",
   invalid_copies: "Choose 1 to 5 copies.",

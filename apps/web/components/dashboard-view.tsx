@@ -26,7 +26,7 @@ export function DashboardView({ initial }: { initial: DashboardData | null }) {
   useLive(async () => {
     if (!org || !can("invoice.read")) return;
     setData(await fetchDashboard(supabase(), org.organization_id));
-  }, ["invoices", "weighments", "print_jobs"]);
+  }, ["invoices", "print_jobs"]); // every entry change also updates its invoice, so weighments need no live feed
 
   const s = data && org && data.orgId === org.organization_id ? data.stats : null;
   const recent = s ? data!.recent : [];

@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-context";
 
-type LiveTable = "invoices" | "weighments" | "print_jobs";
+type LiveTable = "invoices" | "print_jobs";
 
 /**
  * Keeps a screen fresh WITHOUT polling the database.
