@@ -5,12 +5,16 @@
 //  2. the newest frame is fresh (arrived less than FRESH_MS ago): an unplugged cable can never return an old weight;
 //  3. at least MIN_FRAMES consecutive frames carry exactly the same weight, spanning at least MIN_SPAN_MS;
 //  4. if the format reports motion, none of those frames says "moving";
+//     if it does NOT (plain numbers, e.g. "002400"), the weight must hold still longer: NOFLAG_MIN_FRAMES over NOFLAG_MIN_SPAN_MS;
 //  5. the weight is a real mass in kg, not an overload / error frame.
 import { toKg, type Reading } from "./protocols";
 
 export const FRESH_MS = 1500;
 export const MIN_FRAMES = 3;
 export const MIN_SPAN_MS = 700;
+/** Formats without a steady/moving flag: a weight still settling can pause for a moment, so it must hold for 2 s. */
+export const NOFLAG_MIN_FRAMES = 5;
+export const NOFLAG_MIN_SPAN_MS = 2000;
 
 export type ScaleState =
   | { kind: "no_data" }
@@ -51,7 +55,9 @@ export class WeightTracker {
     const run = this.frames.slice(i);
     const moving = run.some((f) => f.stable === false);
     const span = last.at - run[0]!.at;
-    if (moving || run.length < MIN_FRAMES || span < MIN_SPAN_MS) return { kind: "moving", kg: last.kg };
+    const flagged = run.some((f) => f.stable !== null);
+    const [minFrames, minSpan] = flagged ? [MIN_FRAMES, MIN_SPAN_MS] : [NOFLAG_MIN_FRAMES, NOFLAG_MIN_SPAN_MS];
+    if (moving || run.length < minFrames || span < minSpan) return { kind: "moving", kg: last.kg };
     return { kind: "stable", kg: last.kg, since: run[0]!.at, frames: run.length, raw: last.raw };
   }
 }

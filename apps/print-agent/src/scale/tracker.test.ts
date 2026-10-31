@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Reading } from "./protocols";
-import { FRESH_MS, WeightTracker } from "./tracker";
+import { FRESH_MS, NOFLAG_MIN_SPAN_MS, WeightTracker } from "./tracker";
 
-const r = (value: number | null, o: Partial<Reading> = {}): Reading => ({ value, unit: "", stable: null, overload: false, checksumOk: null, raw: String(value), ...o });
+// frames from a format that reports steady / moving (the plain-number rules are tested separately below)
+const r = (value: number | null, o: Partial<Reading> = {}): Reading => ({ value, unit: "", stable: true, overload: false, checksumOk: null, raw: String(value), ...o });
+const plain = (value: number) => r(value, { stable: null });
 const feed = (t: WeightTracker, values: (number | Reading)[], start = 0, step = 100) =>
   values.forEach((v, i) => t.push(typeof v === "number" ? r(v) : v, start + i * step));
 
@@ -49,5 +51,18 @@ describe("WeightTracker", () => {
     const t = new WeightTracker(() => "t");
     feed(t, Array(10).fill(34.21));
     expect(t.state(950)).toMatchObject({ kind: "stable", kg: 34210 });
+  });
+  it("plain numbers (no steady flag) must hold still for 2 seconds", () => {
+    const t = new WeightTracker();
+    // the Vinayak case: a weight pauses for under a second while the vehicle is still settling
+    feed(t, Array.from({ length: 9 }, () => plain(12605)));
+    expect(t.state(850).kind).toBe("moving");
+    feed(t, Array.from({ length: 13 }, () => plain(12605)), 900);
+    expect(t.state(NOFLAG_MIN_SPAN_MS + 150)).toMatchObject({ kind: "stable", kg: 12605 });
+  });
+  it("plain numbers that keep changing by a little are never steady", () => {
+    const t = new WeightTracker();
+    feed(t, [12605, 12605, 12605, 12605, 12605, 12620, 12620, 12620, 12620, 12550, 12550, 12550, 12550, 12550].map(plain), 0, 300);
+    expect(t.state(13 * 300 + 50).kind).toBe("moving");
   });
 });

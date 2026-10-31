@@ -435,6 +435,8 @@ ipcMain.handle("scale-save", async (_e, raw: Partial<ScaleConfig>) => {
     host: typeof raw.host === "string" ? raw.host.trim().slice(0, 100) : undefined,
     tcpPort: Number.isInteger(Number(raw.tcpPort)) && Number(raw.tcpPort) > 0 && Number(raw.tcpPort) < 65536 ? Number(raw.tcpPort) : undefined,
     ask: !!raw.ask,
+    // the empty-bridge limit is kept from the saved settings unless a valid one is sent
+    minKg: Number.isFinite(Number(raw.minKg)) && Number(raw.minKg) >= 0 && Number(raw.minKg) <= 5000 && raw.minKg !== undefined ? Number(raw.minKg) : loadConfig(DEFAULT_SERVER).scale?.minKg,
   };
   if (cfg.enabled && cfg.source === "serial" && !cfg.port) return { ok: false, error: "Choose the COM port the scale is connected to." };
   if (cfg.enabled && cfg.source === "tcp" && (!cfg.host || !cfg.tcpPort)) return { ok: false, error: "Enter the scale's network address and port." };

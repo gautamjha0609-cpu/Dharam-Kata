@@ -19,7 +19,12 @@ export interface ScaleConfig {
   tcpPort?: number;
   /** send the format's read-only request while reading (only for formats that do not send by themselves) */
   ask?: boolean;
+  /** a steady weight below this is an empty bridge (dirt, water, zero drift), not a vehicle; default MIN_VEHICLE_KG */
+  minKg?: number;
 }
+
+/** Legal minimum of a weighbridge with 10 kg divisions (20 divisions). Below this the bridge counts as empty. */
+export const MIN_VEHICLE_KG = 200;
 
 /** A connection that delivers bytes. */
 export interface Link {
@@ -44,7 +49,7 @@ export const READ_MESSAGES: Record<ReadCode, string> = {
   unstable: "The weight is not steady. Wait until the vehicle stops moving, then tap Detect weight again.",
   overload: "The scale shows overload or an error.",
   bad_unit: "The scale sends a unit that is not kg or tonne. Set the indicator to kg.",
-  zero_weight: "The scale shows 0. Is the vehicle on the weighbridge?",
+  zero_weight: "The scale shows 0 or almost 0 (empty weighbridge). Is the vehicle on the weighbridge?",
   negative_weight: "The scale shows a negative weight. Zero the indicator with the bridge empty.",
   port_busy: "The scale's COM port could not be opened. Close any other weighing software that uses it, or check the cable.",
   port_lost: "The scale's cable or USB adapter was disconnected.",
@@ -209,8 +214,8 @@ export class ScaleManager {
       if (ask && this.link && now() - lastAsk > 400) { lastAsk = now(); await this.link.write(ask).catch(() => {}); }
       const s = this.tracker.state(now());
       if (s.kind === "stable") {
-        if (s.kg === 0) return { ok: false, code: "zero_weight", message: READ_MESSAGES.zero_weight };
         if (s.kg < 0) return { ok: false, code: "negative_weight", message: READ_MESSAGES.negative_weight };
+        if (s.kg < (this.cfg.minKg ?? MIN_VEHICLE_KG)) return { ok: false, code: "zero_weight", message: READ_MESSAGES.zero_weight };
         return { ok: true, kg: s.kg, raw: s.raw, frames: s.frames };
       }
       await sleep(100);

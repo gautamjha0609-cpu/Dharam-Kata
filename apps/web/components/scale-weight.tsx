@@ -14,7 +14,7 @@ const SCALE_ERRORS: Record<string, string> = {
   connecting: "The printer PC is still connecting to the scale. Tap Detect weight again in a few seconds.",
   overload: "The scale shows overload or an error.",
   bad_unit: "The scale sends a unit that is not kg or tonne. Set the indicator to kg.",
-  zero_weight: "The scale shows 0. Is the vehicle on the weighbridge?",
+  zero_weight: "The scale shows 0 or almost 0 (empty weighbridge). Is the vehicle on the weighbridge?",
   negative_weight: "The scale shows a negative weight. Zero the indicator with the bridge empty.",
   port_busy: "The printer PC cannot open the scale's COM port (another weighing program may be using it).",
   port_lost: "The scale's cable or USB adapter is disconnected from the printer PC.",

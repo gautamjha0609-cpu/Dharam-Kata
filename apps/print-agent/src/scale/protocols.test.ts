@@ -99,9 +99,14 @@ describe("plain text weight", () => {
     expect(r.map((x) => x.value)).toEqual([34210]);
   });
   it("keeps an unfinished line for the next chunk", () => {
-    const d = new Decoder("generic");
+    const d = new Decoder("generic", false, false);
     expect(d.push(bytes("  3421"))).toEqual([]);
     expect(d.push(bytes("0 kg\r\n")).map((x) => x.value)).toEqual([34210]);
+  });
+  it("never reads the cut-off first line after connecting (65 of 000065)", () => {
+    const d = new Decoder("generic");
+    expect(d.push(bytes("65\r\n000065\r\n002400\r\n")).map((x) => x.value)).toEqual([65, 2400]);
+    expect(d.push(bytes("002400\r\n")).map((x) => x.value)).toEqual([2400]);
   });
 });
 
@@ -126,7 +131,7 @@ describe("auto-detection", () => {
     expect(detect(bytes(xk("+", "034210", 0).repeat(5)))?.protocol).toBe("xk3190");
     expect(detect(bytes((toledo({ w: "034210", chk: true })).repeat(5)))?.protocol).toBe("toledo");
     expect(detect(bytes("ST,GS,+0034210kg\r\n".repeat(5)))?.protocol).toBe("and_std");
-    expect(detect(bytes("  34210 kg\r\n".repeat(5)))?.protocol).toBe("generic");
+    expect(detect(bytes("  34210 kg\r\n".repeat(8)))?.protocol).toBe("generic");
     expect(detect(bytes("01243000=".repeat(6)))?.protocol).toBe("xk3190_rev");
   });
   it("finds 7E1 data received as 8N1 (top bit = parity)", () => {
@@ -150,5 +155,9 @@ describe("units", () => {
     expect(toKg(34.21, "", "t")).toBe(34210);
     expect(toKg(34.21, "t", "kg")).toBe(34210);
     expect(toKg(1000, "lb", "kg")).toBe(453.592);
+  });
+  it("plain numbers are not detected from a few lines that never repeat (wrong speed)", () => {
+    expect(detect(bytes(["12", "3456", "78", "901", "2345", "67", "8901", ""].join("\r\n")))).toBeNull();
+    expect(detect(bytes("\r\n002400".repeat(6) + "\r\n"))?.protocol).toBe("generic");
   });
 });

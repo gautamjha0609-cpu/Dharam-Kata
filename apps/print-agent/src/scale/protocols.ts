@@ -67,6 +67,13 @@ function completeLines(text: string): { lines: string[]; consumed: number } {
   return { lines, consumed };
 }
 
+/** Line formats: the first line of a capture usually starts mid-frame ("65" of "000065"), so it is never read. */
+const LINE_FORMATS = new Set<ProtocolId>(["and_std", "mt_sics", "generic"]);
+function firstTerminator(text: string): number {
+  for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); if (c === 0x0d || c === 0x0a || c === 0x03) return i + 1; }
+  return -1;
+}
+
 // ---- Mettler Toledo standard continuous ----------------------------------------------------------------------------------
 // STX SWA SWB SWC W6 T6 CR [CHK]. SWA bits 0-2 decimal position (X00, X0, X, 0.X â¦ 0.0000X); SWB bit0 net, bit1 negative,
 // bit2 over/under range, bit3 motion, bit4 kg (else lb); SWC bits 0-2 override the unit (1 g, 2 t). Bit 5 is always set.
@@ -223,15 +230,25 @@ export function toKg(value: number, unit: Unit, indicatorUnit: "kg" | "t"): numb
  */
 export class Decoder {
   private buf = "";
-  constructor(public readonly protocol: ProtocolId, private readonly mask7 = false) {}
+  /** line formats: false until the first line end was seen (what came before it is a cut-off frame) */
+  private synced: boolean;
+  constructor(public readonly protocol: ProtocolId, private readonly mask7 = false, startsMidStream = true) {
+    this.synced = !startsMidStream || !LINE_FORMATS.has(protocol);
+  }
   push(bytes: Uint8Array): Reading[] {
     this.buf += bytesToText(bytes, this.mask7);
+    if (!this.synced) {
+      const i = firstTerminator(this.buf);
+      if (i < 0) { if (this.buf.length > 256) this.buf = this.buf.slice(-256); return []; }
+      this.buf = this.buf.slice(i);
+      this.synced = true;
+    }
     const { readings, consumed } = PROTOCOLS[this.protocol].scan(this.buf);
     if (consumed > 0) this.buf = this.buf.slice(consumed);
     if (this.buf.length > 2048) this.buf = this.buf.slice(-256);
     return readings;
   }
-  reset() { this.buf = ""; }
+  reset() { this.buf = ""; this.synced = !LINE_FORMATS.has(this.protocol); }
 }
 
 // ---- auto-detection ------------------------------------------------------------------------------------------------------------
@@ -256,10 +273,20 @@ export function detect(sample: Uint8Array, minFrames = 3): Detection | null {
   const tries = r8 >= 0.85 || r7 < 0.9 ? [false, true] : [true, false];
   let best: Detection | null = null;
   for (const mask7 of tries) {
-    const text = bytesToText(sample, mask7);
+    const all = bytesToText(sample, mask7);
+    const cut = firstTerminator(all);
     for (const id of CONTINUOUS) {
+      const text = LINE_FORMATS.has(id) && cut > 0 ? all.slice(cut) : all;
       const valid = PROTOCOLS[id].scan(text).readings.filter((r) => r.checksumOk !== false && (r.value !== null || r.overload));
       if (valid.length < minFrames) continue;
+      // plain numbers carry no frame or checksum, so a wrong speed can look like them: demand clean text and a weight that repeats
+      // (an indicator sends the same weight many times a second; noise does not)
+      if (id === "generic") {
+        if (readability(sample, mask7) < 0.97 || valid.length < Math.max(minFrames, 5)) continue;
+        const seen = new Map<number | null, number>();
+        for (const r of valid) seen.set(r.value, (seen.get(r.value) ?? 0) + 1);
+        if (Math.max(...seen.values()) < 3) continue;
+      }
       const verified = valid.filter((r) => r.checksumOk === true).length;
       const score = PROTOCOLS[id].specificity * 1000 + verified * 10 + valid.length - (mask7 ? 1 : 0);
       if (!best || score > best.score) best = { protocol: id, mask7, readings: valid, score };

@@ -69,7 +69,19 @@ describe("ScaleManager", () => {
     const s = fakeScale({ baud: 9600, frame: () => xk(0) });
     const m = manager(s.factory);
     await m.apply({ enabled: true, source: "serial", port: "COM3", baud: 9600, protocol: "xk3190" });
-    expect(await m.read(2000)).toMatchObject({ ok: false, code: "zero_weight" });
+    expect(await m.read(4000)).toMatchObject({ ok: false, code: "zero_weight" });
+  });
+
+  it("refuses a small weight on the empty bridge (65 kg of dirt / zero drift), accepts a vehicle", async () => {
+    let w = 65;
+    const s = fakeScale({ baud: 9600, frame: () => `${String(w).padStart(6, "0")}
+` });
+    const m = manager(s.factory);
+    await m.apply({ enabled: true, source: "serial", port: "COM3", baud: 9600, protocol: "generic" });
+    expect(await m.read(4000)).toMatchObject({ ok: false, code: "zero_weight" });
+    w = 2400;
+    await new Promise((r) => setTimeout(r, 150)); // the next frames arrive (the bridge was empty a moment ago)
+    expect(await m.read(4000)).toMatchObject({ ok: true, kg: 2400 });
   });
 
   it("says when nothing arrives", async () => {

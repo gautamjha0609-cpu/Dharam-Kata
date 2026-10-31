@@ -1,7 +1,7 @@
 {
   "name": "dharam-kata-print-agent",
   "productName": "Dharam Kata Print Agent",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Silent invoice printing agent for Dharam Kata (Windows)",
   "private": true,
   "main": "dist/main.js",
